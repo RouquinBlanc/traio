@@ -45,27 +45,22 @@ class AsyncTask:
         return self.name if self.name is not None else str(self.future)
 
     def _cleanup(self, fut: asyncio.Future):
-        if fut.cancelled():
-            self.nursery.logger.info('task `%s` got cancelled', self)
+        try:
+            fut.result()
+        except asyncio.CancelledError:
+            self.nursery.logger.info(
+                'task `%s` got cancelled', self)
+        except Exception as ex:  # pylint: disable=broad-except
+            self.nursery.logger.error(
+                'task `%s` got an exception: %s', self, ex)
+            if self.bubble:
+                self.nursery.cancel(TaskException(ex))
         else:
-            try:
-                fut.result()
-            except asyncio.CancelledError:
-                self.nursery.logger.info(
-                    'task `%s` got cancelled', self)
-            except Exception as ex:  # pylint: disable=broad-except
-                self.nursery.logger.error(
-                    'task `%s` got an exception: %s', self, ex)
-                if self.bubble:
-                    self.nursery.cancel(TaskException(ex))
-            else:
-                self.nursery.logger.info('task `%s` done', self)
-            finally:
-                # No exception
-                if self.master:
-                    # This was set as master task: finish at once
-                    self.nursery.cancel()
-                self.nursery.remove_task(self)
+            self.nursery.logger.info('task `%s` done', self)
+        finally:
+            if self.master:
+                self.nursery.cancel()
+            self.nursery.remove_task(self)
 
     # --- API ---
 
