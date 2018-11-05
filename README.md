@@ -1,5 +1,7 @@
 # A simple asyncio wrapper attempting to look like Trio
 
+[![Build Status](https://travis-ci.org/RouquinBlanc/traio.svg?branch=master)](https://travis-ci.org/RouquinBlanc/traio) [![Coverage Status](https://coveralls.io/repos/github/RouquinBlanc/traio/badge.svg?branch=master)](https://coveralls.io/github/RouquinBlanc/traio?branch=master)
+
 When going deeper and deeper with asyncio, and managing a lot of tasks
 in parallel, you notice that on top of having a lot to deal with
 to keep an eye on all your task, but you also end up always doing the
