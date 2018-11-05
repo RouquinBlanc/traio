@@ -137,15 +137,16 @@ class Nursery:
                     'cancelling active `%s` task from nursery `%s`', task, self)
                 task.cancel()
 
-        if exception:
-            self.logger.warning(
-                'cancelling nursery `%s` with %s: %s',
-                self, exception.__class__.__name__, exception
-            )
-            self._done.set_exception(exception)
-        else:
-            self.logger.info('cancelling nursery `%s`', self)
-            self._done.set_result(None)
+        if not self._done.done():
+            if exception:
+                self.logger.warning(
+                    'cancelling nursery `%s` with %s: %s',
+                    self, exception.__class__.__name__, exception
+                )
+                self._done.set_exception(exception)
+            else:
+                self.logger.info('cancelling nursery `%s`', self)
+                self._done.set_result(None)
 
     def start(self):
         """
