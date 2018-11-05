@@ -88,6 +88,23 @@ async def test_task_raises():
 
 
 @pytest.mark.asyncio
+async def test_master_raises():
+    """Raise an exception from a task"""
+    async def raiser():
+        await asyncio.sleep(0.01)
+        raise ValueError('boom')
+
+    try:
+        async with Nursery() as n:
+            n.start_soon(run10())
+            n.start_soon(raiser(), master=True)
+    except TaskException as e:
+        assert isinstance(e.__cause__, ValueError)
+    else:
+        raise Exception('DID NOT RAISE')
+
+
+@pytest.mark.asyncio
 async def test_task_catches_cancel():
     """A nasty task catches all exceptions"""
     async def nasty():
@@ -214,6 +231,43 @@ async def test_no_bubble():
     after = time.time()
 
     assert (after - before) > 0.4
+
+
+@pytest.mark.asyncio
+async def test_no_bubble_master():
+    """Test if no bubble does not raise, but cancels because of master=True"""
+    async def trivial():
+        await asyncio.sleep(0.01)
+        raise Exception('not interresting')
+
+    before = time.time()
+
+    async with Nursery(timeout=0.5) as n:
+        n.start_soon(run10())
+        n.start_soon(trivial(), bubble=False, master=True)
+
+    after = time.time()
+
+    assert (after - before) < 0.2
+
+
+@pytest.mark.asyncio
+async def test_cancel_master():
+    """Test if cancelling master cancels the loop"""
+
+    before = time.time()
+
+    async with Nursery(timeout=0.5) as n:
+        n.start_soon(run10())
+
+        t = n.start_soon(run10(), master=True)
+
+        await asyncio.sleep(0.05)
+        t.cancel()
+
+    after = time.time()
+
+    assert (after - before) < 0.2
 
 
 @pytest.mark.asyncio
