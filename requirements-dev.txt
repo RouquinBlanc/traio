@@ -1,4 +1,6 @@
 typing; python_version<"3.6"
 coverage
 python-coveralls
+pytest
+pytest-asyncio
 tox
