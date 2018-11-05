@@ -8,7 +8,7 @@ Except:
 import asyncio
 import logging
 from enum import Enum
-from typing import List, Awaitable
+from typing import Awaitable
 
 from .task import AsyncTask
 
@@ -66,7 +66,7 @@ class Nursery:
         """
         self.logger = logger or logging.getLogger('traio')
 
-        self._pending_tasks: List[AsyncTask] = []
+        self._pending_tasks = []
 
         assert timeout is None or timeout >= 0, \
             'timeout should be a positive integer or (0, None) when disabled'
