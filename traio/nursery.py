@@ -92,6 +92,15 @@ class Nursery:
             self.cancel(exc_val)
         await self.join()
 
+    def __enter__(self):
+        """Protect against calling as regular context manager"""
+        raise RuntimeError(
+            "asynchronous context manager, use 'async with Nursery(...)'!"
+        )
+
+    def __exit__(self, *_):  # pragma: no cover
+        assert False, 'This should never be called'
+
     async def _timeout_handler(self):
         await asyncio.sleep(self.timeout)
         self.cancel(TimeoutError())

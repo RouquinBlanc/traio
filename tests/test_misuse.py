@@ -19,3 +19,11 @@ async def test_task_not_awaitable(arg):
     with pytest.raises(OSError):
         async with Nursery() as n:
             n.start_soon(arg)
+
+
+@pytest.mark.asyncio
+async def test_sync_ctx_manager():
+    """Calling nursery as a synchronous context manager"""
+    with pytest.raises(RuntimeError):
+        with Nursery():
+            pass
