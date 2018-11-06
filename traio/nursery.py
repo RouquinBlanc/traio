@@ -195,7 +195,7 @@ class Nursery:
                     except Exception as ex:  # pylint: disable=broad-except
                         # Too late for raising... and we need to move on cleaning other tasks!
                         self.logger.error(
-                            'task `%s` failed to cancelled with exception: %s %s',
+                            'task `%s` failed to cancel with exception: %s %s',
                             task, ex.__class__.__name__, ex)
 
     def start_soon(
