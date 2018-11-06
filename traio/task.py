@@ -71,6 +71,9 @@ class AsyncTask:
         """
         return await self.awaitable
 
+    def __await__(self):
+        return self.awaitable.__await__()
+
     def done(self):
         """Internal future is done"""
         return self.awaitable.done()
