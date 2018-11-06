@@ -1,6 +1,8 @@
 typing; python_version<"3.6"
 coverage
+mock
 python-coveralls
+pylint
 pytest
 pytest-asyncio
 tox
