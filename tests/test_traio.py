@@ -163,6 +163,34 @@ async def test_external_cancel():
 
 
 @pytest.mark.asyncio
+async def test_external_cancel_nasty():
+    """Raise an external cancellation with task which fails cancelling"""
+    async def nasty():
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            # Something bad happens
+            raise ValueError('boom')
+
+    async def run_me():
+        n = Nursery()
+        async with n:
+            n.start_soon(nasty())
+
+        assert n.state == State.CANCELLED
+
+    task = asyncio.ensure_future(run_me())
+
+    try:
+        await asyncio.wait_for(task, 0.1)
+    except asyncio.TimeoutError:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        raise Exception('should have raised')
+
+
+@pytest.mark.asyncio
 async def test_internal_cancel():
     """Test an internal cancellation"""
     before = time.time()
@@ -181,17 +209,6 @@ async def test_internal_cancel():
 async def test_cancel_not_started():
     """cancel an unstarted nursery"""
     n = Nursery()
-
-    with pytest.raises(AssertionError):
-        n.cancel()
-
-
-@pytest.mark.asyncio
-async def test_cancel_already_finished():
-    """Cancel a finished nursery"""
-    n = Nursery()
-    async with n:
-        pass
 
     with pytest.raises(AssertionError):
         n.cancel()
@@ -286,3 +303,20 @@ async def test_join_task():
     after = time.time()
 
     assert 0.1 < (after - before) < 0.5
+
+
+@pytest.mark.asyncio
+async def test_cancelling_going_bad():
+    """Test cancelling a pending task, but things go wrong..."""
+    async def nasty():
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            # Something bad happens
+            raise ValueError('boom')
+
+    with pytest.raises(TimeoutError):
+        async with Nursery(timeout=0.5) as n:
+            n.start_soon(nasty())
+
+    await asyncio.sleep(0.1)

@@ -129,7 +129,7 @@ class Nursery:
         and raise given Exception if needed.
         :param exception: Exception to be raised
         """
-        assert self.state == State.STARTED, 'can only cancel a running nursery'
+        assert self.state != State.INIT, 'cannot cancel before even starting'
 
         for task in self._pending_tasks:
             if not task.done():
@@ -181,7 +181,13 @@ class Nursery:
             # We may still have pending tasks if the Nursery is cancelled
             for task in self._pending_tasks:
                 if not task.done():
-                    await task.ensure_cancelled()
+                    try:
+                        await task.ensure_cancelled()
+                    except Exception as ex:  # pylint: disable=broad-except
+                        # Too late for raising... and we need to move on cleaning other tasks!
+                        self.logger.error(
+                            'task `%s` failed to cancelled with exception: %s %s',
+                            task, ex.__class__.__name__, ex)
 
     def start_soon(
             self, awaitable: Awaitable, *,
