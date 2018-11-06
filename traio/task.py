@@ -38,11 +38,11 @@ class AsyncTask:
         self.name = name
 
         self.start_time = time.time()
-        self.future = asyncio.ensure_future(awaitable)
-        self.future.add_done_callback(self._cleanup)
+        self.awaitable = asyncio.ensure_future(awaitable)
+        self.awaitable.add_done_callback(self._cleanup)
 
     def __repr__(self):
-        return self.name if self.name is not None else str(self.future)
+        return self.name if self.name is not None else str(self.awaitable)
 
     def _cleanup(self, fut: asyncio.Future):
         try:
@@ -69,15 +69,15 @@ class AsyncTask:
         Wait for internal future to terminate
         :returns: whatever the internal things returned
         """
-        return await self.future
+        return await self.awaitable
 
     def done(self):
         """Internal future is done"""
-        return self.future.done()
+        return self.awaitable.done()
 
     def cancel(self):
         """Perform cancellation on internal future"""
-        self.future.cancel()
+        self.awaitable.cancel()
 
     async def ensure_cancelled(self):
         """
@@ -89,7 +89,7 @@ class AsyncTask:
             await asyncio.wait_for(
                 # Since python 3.7, after timeout the wait_for API
                 # will try to cancel and await the future... which may block forever!
-                asyncio.shield(self.future),
+                asyncio.shield(self.awaitable),
                 self.cancel_timeout
             )
         except asyncio.CancelledError:
