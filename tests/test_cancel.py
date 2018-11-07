@@ -9,7 +9,6 @@ import pytest
 
 from tests import run10
 from traio import Nursery
-from traio.nursery import State
 
 
 @pytest.mark.asyncio
@@ -42,7 +41,7 @@ async def test_external_cancel():
         async with n:
             n.start_soon(run10())
 
-        assert n.state == State.CANCELLED
+        assert n.cancelled()
 
     task = asyncio.ensure_future(run_me())
 
@@ -71,7 +70,7 @@ async def test_external_cancel_nasty():
         async with n:
             n.start_soon(nasty())
 
-        assert n.state == State.CANCELLED
+        assert n.cancelled()
 
     task = asyncio.ensure_future(run_me())
 
@@ -97,15 +96,6 @@ async def test_internal_cancel():
     after = time.time()
 
     assert (after - before) < 0.5
-
-
-@pytest.mark.asyncio
-async def test_cancel_not_started():
-    """cancel an unstarted nursery"""
-    n = Nursery()
-
-    with pytest.raises(AssertionError):
-        n.cancel()
 
 
 @pytest.mark.asyncio

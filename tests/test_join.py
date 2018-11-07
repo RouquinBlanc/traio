@@ -9,7 +9,6 @@ import pytest
 
 from tests import run10
 from traio import Nursery
-from traio.nursery import State
 
 
 async def trivial():
@@ -55,7 +54,7 @@ async def test_join_task_cancelled():
 @pytest.mark.asyncio
 async def test_join_task_cancelled_no_env():
     """Test joining a task, but cancelled"""
-    n = Nursery(timeout=1).start()
+    n = Nursery(timeout=1)
 
     t = n.start_soon(run10())
 
@@ -86,7 +85,7 @@ async def test_join_task_raises_no_env():
     """Test joining a task, but raises"""
     before = time.time()
 
-    n = Nursery(timeout=1).start()
+    n = Nursery(timeout=1)
 
     t = n.start_soon(raiser())
     with pytest.raises(ValueError):
@@ -110,7 +109,7 @@ async def test_join_then_new():
         assert (time.time() - before) < 0.3
 
         # At this point, the nursery should be still started
-        assert n.state == State.STARTED
+        assert not n.done()
 
         # will 0.2 seconds
         n.start_soon(trivial())
@@ -124,14 +123,14 @@ async def test_join_then_new_no_env():
     """Test joining a task, then spawn another one"""
     before = time.time()
 
-    n = Nursery(timeout=1).start()
+    n = Nursery(timeout=1)
 
     # takes 0.2 seconds
     await n.start_soon(trivial())
     assert (time.time() - before) < 0.3
 
     # At this point, the nursery should be still started
-    assert n.state == State.STARTED
+    assert not n.done()
 
     # will 0.2 seconds
     n.start_soon(trivial())

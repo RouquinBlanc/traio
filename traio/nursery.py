@@ -5,25 +5,15 @@ Except:
     - we do not pretend implementing an equivalent of Trio; just the philosophy!
     - no pretensions; if you want more Trio-like, just switch to Trio!
 """
+
 import asyncio
 import logging
-from enum import IntEnum
 from typing import Awaitable
 
 from .task import AsyncTask
 
 
-class State(IntEnum):
-    """States of a nursery instance"""
-    INIT = 0
-    STARTED = 1
-    JOINING = 2
-    DONE = 3
-    CANCELLED = 4
-    ERROR = 5
-
-
-class Nursery:
+class Nursery(asyncio.Future):
     """
     Trio-like nursery (or at least a very light & dumb implementation...)
 
@@ -44,7 +34,6 @@ class Nursery:
     nursery = Nursery(...)
     nursery.start_soon(my_task1)
     nursery.start_soon(my_task2)
-    nursery.start()
 
     [...]
     await nursery.join()
@@ -56,39 +45,33 @@ class Nursery:
         - the nursery to be marked as done (join() will return)
     """
 
-    # pylint: disable=too-many-instance-attributes
-    def __init__(self, logger=None, timeout=None, name=None):
+    def __init__(self, *, logger=None, timeout=0, name=None):
         """
         Create a nursery.
 
         :param logger: Can pass a logger. By default using `traio` logger
-        :param timeout: if timeout is specified
-        :param name:
+        :param timeout: timeout before cancelling all tasks
+        :param name: nursery name (for logging)
         """
+        super().__init__()
+
+        self._name = name or str(id(self))
         self.logger = logger or logging.getLogger('traio')
 
         self._pending_tasks = []
 
-        assert timeout is None or timeout >= 0, \
-            'timeout should be a positive integer or (0, None) when disabled'
+        assert timeout >= 0, 'timeout must me a positive number'
         self._timeout_task = None
-        self.timeout = 0
-        self._timeout = timeout
+        self.timeout = self._timeout = timeout
 
-        self._name = name or '-'
-        self._done = asyncio.Future()
-        self.state = State.INIT
-
-    @property
-    def _joining(self):
-        return self.state.value >= State.JOINING.value
+        self._joining = False
+        self.logger.debug('creating nursery `%s`', self)
 
     def __repr__(self):
         """For printing"""
         return self._name
 
     async def __aenter__(self):
-        self.start()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -115,13 +98,13 @@ class Nursery:
         try:
             task.result()
         except asyncio.CancelledError:
-            self.logger.info('task `%s` got cancelled', task)
+            self.logger.debug('task `%s` got cancelled', task)
         except Exception as ex:  # pylint: disable=broad-except
-            self.logger.error('task `%s` got an exception: %s', task, ex)
+            self.logger.debug('task `%s` got an exception: %s', task, ex)
             if task.bubble:
                 self.cancel(ex)
         else:
-            self.logger.info('task `%s` done', task)
+            self.logger.debug('task `%s` done', task)
         finally:
             if task.master:
                 self.cancel()
@@ -129,9 +112,11 @@ class Nursery:
             if task in self._pending_tasks:
                 self._pending_tasks.remove(task)
 
-            if not self._pending_tasks and not self._done.done() and self._joining:
+            if not self._pending_tasks and not self.done() and self._joining:
                 # No more tasks scheduled: cancel the
                 self.cancel()
+
+    # --- Public API ---
 
     @property
     def timeout(self) -> float:
@@ -150,6 +135,7 @@ class Nursery:
         if self.timeout > 0:
             self._timeout_task = asyncio.ensure_future(self._timeout_handler())
 
+    # pylint: disable=arguments-differ
     def cancel(self, exception: Exception = None):
         """
         Cancel nursery.
@@ -157,63 +143,41 @@ class Nursery:
         and raise given Exception if needed.
         :param exception: Exception to be raised
         """
-        assert self.state != State.INIT, 'cannot cancel before even starting'
-
         if self._timeout_task:
             self._timeout_task.cancel()
 
         for task in self._pending_tasks:
             if not task.done():
-                self.logger.info(
+                self.logger.debug(
                     'cancelling active `%s` task from nursery `%s`', task, self)
                 task.cancel()
 
-        if not self._done.done():
+        if not self.done():
             if exception:
                 self.logger.warning(
                     'cancelling nursery `%s` with %s: %s',
                     self, exception.__class__.__name__, exception
                 )
-                self._done.set_exception(exception)
+                self.set_exception(exception)
             else:
-                self.logger.info('cancelling nursery `%s`', self)
-                self._done.set_result(None)
-
-    def start(self):
-        """
-        Start the Nursery. If any timeout is configured, we start counting from now.
-        :return self for convenience
-        """
-        assert self.state == State.INIT, 'can only start a nursery once'
-        self.state = State.STARTED
-
-        if self._timeout:
-            # Force timeout reset to now
-            self.timeout = self._timeout
-
-        return self
+                self.logger.debug('cancelling nursery `%s`', self)
+                self.set_result(None)
 
     async def join(self):
         """Await for all tasks to be finished, or an error to go through"""
-        assert self.state == State.STARTED, 'can only join a started nursery'
-        self.state = State.JOINING
+        assert not self._joining, 'can only join a running nursery'
+        self._joining = True
 
-        if not self._pending_tasks and not self._done.done():
+        if not self._pending_tasks and not self.done():
             # There is no task left.
-            self._done.set_result(None)
+            self.set_result(None)
 
         try:
-            await self._done
-            self.state = State.DONE
+            await self
         except asyncio.CancelledError:
-            self.logger.info('nursery `%s` cancelled from outside!', self)
-            self.state = State.CANCELLED
+            self.logger.debug('nursery `%s` cancelled from outside!', self)
             raise
         finally:
-            if self.state == State.JOINING:
-                # Neither DONE nor CANCELLED
-                self.state = State.ERROR
-
             # We may still have pending tasks if the Nursery is cancelled
             for task in self._pending_tasks:
                 if not task.done():
@@ -234,7 +198,7 @@ class Nursery:
                             'Could not cancel task `{}`!!! Check your code!'.format(self)) from ex
                     except Exception as ex:  # pylint: disable=broad-except
                         # Too late for raising... and we need to move on cleaning other tasks!
-                        self.logger.error(
+                        self.logger.warning(
                             'task `%s` failed to cancel with exception: %s %s',
                             task, ex.__class__.__name__, ex)
 
@@ -245,20 +209,18 @@ class Nursery:
                 except asyncio.CancelledError:
                     pass
 
-    def start_soon(
-            self, awaitable: Awaitable, *,
-            bubble=True, cancel_timeout=1, master=False, name=None
-    ) -> AsyncTask:
+    def start_soon(self, awaitable: Awaitable, *,
+                   name=None, master=False, bubble=True, cancel_timeout=1):
         """
         Start a task on the nursery.
 
         :param awaitable: Something to be awaited. Can be a future or a coroutine
+        :param name: task name (for logging)
+        :param master: If a master task is done, nursery is cancelled
         :param bubble: errors in the task will cancel nursery
         :param cancel_timeout: Time we allow for cancellation
             (if the task wants to catch it and do cleanup)
-        :param master: If a master task is done, nursery is cancelled
-        :param name: task name (for logging)
-        :return: the task created
+        :returns: AsyncTask
         """
         if asyncio.iscoroutine(awaitable) or asyncio.isfuture(awaitable):
             # This is already an awaitable object
@@ -270,6 +232,6 @@ class Nursery:
             fut, cancel_timeout=cancel_timeout,
             bubble=bubble, master=master, name=name)
         task.add_done_callback(self._on_task_done)
-        self.logger.info('adding task `%s` to nursery `%s`', task, self)
+        self.logger.debug('adding task `%s` to nursery `%s`', task, self)
         self._pending_tasks.append(task)
         return task
