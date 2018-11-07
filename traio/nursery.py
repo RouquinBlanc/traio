@@ -128,8 +128,7 @@ class Nursery:
             self._timeout_task.cancel()
             self._timeout_task = None
         if self.timeout > 0:
-            self._timeout_task = self.start_soon(
-                self._timeout_handler(), name='nursery timeout')
+            self._timeout_task = asyncio.ensure_future(self._timeout_handler())
 
     def cancel(self, exception: Exception = None):
         """
@@ -139,6 +138,9 @@ class Nursery:
         :param exception: Exception to be raised
         """
         assert self.state != State.INIT, 'cannot cancel before even starting'
+
+        if self._timeout_task:
+            self._timeout_task.cancel()
 
         for task in self._pending_tasks:
             if not task.done():
@@ -197,6 +199,13 @@ class Nursery:
                         self.logger.error(
                             'task `%s` failed to cancel with exception: %s %s',
                             task, ex.__class__.__name__, ex)
+
+            if self._timeout_task:
+                self._timeout_task.cancel()
+                try:
+                    await self._timeout_task
+                except asyncio.CancelledError:
+                    pass
 
     def start_soon(
             self, awaitable: Awaitable, *,

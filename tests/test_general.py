@@ -5,6 +5,7 @@ import pytest
 
 from mock import Mock
 
+from tests import run10
 from traio import Nursery, TaskException
 
 
@@ -12,6 +13,13 @@ from traio import Nursery, TaskException
 async def test_empty():
     """Empty Nursery"""
     async with Nursery():
+        pass
+
+
+@pytest.mark.asyncio
+async def test_empty_timeout():
+    """Empty Nursery"""
+    async with Nursery(timeout=0.1):
         pass
 
 
@@ -56,18 +64,52 @@ async def test_task_raises():
 
 @pytest.mark.asyncio
 async def test_join_task():
-    """Test joining a task"""
+    """Test joining a task and check result"""
     async def trivial():
         await asyncio.sleep(0.2)
+        return 3
 
     before = time.time()
 
     async with Nursery(timeout=0.5) as n:
-        t = n.start_soon(trivial(), bubble=False)
-        await t.join()
+        ret = await n.start_soon(trivial())
+        assert ret == 3
+
+        t = n.start_soon(trivial())
+        assert 3 == await t.join()
+
         # Cancel directly
         n.cancel()
 
     after = time.time()
-
     assert 0.1 < (after - before) < 0.5
+
+
+@pytest.mark.asyncio
+async def test_join_task_cancelled():
+    """Test joining a task, but cancelled"""
+    async with Nursery(timeout=1) as n:
+        t = n.start_soon(run10())
+
+        t.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await t.join()
+
+
+@pytest.mark.asyncio
+async def test_join_task_raises():
+    """Test joining a task, but raises"""
+    async def raiser():
+        await asyncio.sleep(0.1)
+        raise ValueError('boom')
+
+    before = time.time()
+
+    with pytest.raises(TaskException):
+        async with Nursery(timeout=1) as n:
+            t = n.start_soon(raiser())
+            with pytest.raises(ValueError):
+                await t.join()
+
+    after = time.time()
+    assert (after - before) < 0.3
