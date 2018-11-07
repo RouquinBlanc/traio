@@ -235,3 +235,14 @@ class Nursery(asyncio.Future):
         self.logger.debug('adding task `%s` to nursery `%s`', task, self)
         self._pending_tasks.append(task)
         return task
+
+    def fork(self, *, name=None, timeout=0):
+        """
+        Fork a new Nursery from the current one
+        :param name: name for logging
+        :param timeout: None by default
+        :returns: Nursery
+        """
+        nursery = Nursery(logger=self.logger, timeout=timeout, name=name)
+        self.start_soon(nursery, bubble=False)
+        return nursery
