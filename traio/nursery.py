@@ -192,8 +192,21 @@ class Nursery:
             # We may still have pending tasks if the Nursery is cancelled
             for task in self._pending_tasks:
                 if not task.done():
+                    task.cancel()
                     try:
-                        await task.ensure_cancelled()
+                        await asyncio.wait_for(
+                            # Since python 3.7, after timeout the wait_for API
+                            # will try to cancel and await the future... which may block forever!
+                            asyncio.shield(task),
+                            task.cancel_timeout
+                        )
+                    except asyncio.CancelledError:
+                        pass
+                    except asyncio.TimeoutError as ex:
+                        self.logger.error(
+                            'task `%s` could not be cancelled in time', self)
+                        raise OSError(
+                            'Could not cancel task `{}`!!! Check your code!'.format(self)) from ex
                     except Exception as ex:  # pylint: disable=broad-except
                         # Too late for raising... and we need to move on cleaning other tasks!
                         self.logger.error(

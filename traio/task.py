@@ -78,24 +78,3 @@ class AsyncTask:
     def cancel(self):
         """Perform cancellation on internal future"""
         self.awaitable.cancel()
-
-    async def ensure_cancelled(self):
-        """
-        Ensure cancelled task has finished
-        (a coro may catch cancel error for cleanup...)
-        """
-        self.cancel()
-        try:
-            await asyncio.wait_for(
-                # Since python 3.7, after timeout the wait_for API
-                # will try to cancel and await the future... which may block forever!
-                asyncio.shield(self.awaitable),
-                self.cancel_timeout
-            )
-        except asyncio.CancelledError:
-            pass
-        except asyncio.TimeoutError as ex:
-            self.nursery.logger.error(
-                'task `%s` could not be cancelled in time', self)
-            raise OSError(
-                'Could not cancel task `{}`!!! Check your code!'.format(self)) from ex
