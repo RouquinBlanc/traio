@@ -90,11 +90,12 @@ class Nursery(asyncio.Future):
         assert False, 'This should never be called'
 
     async def _timeout_handler(self):
+        """When timeout is reached, nursery is cancelled."""
         await asyncio.sleep(self.timeout)
         self.cancel(TimeoutError())
 
     def _on_task_done(self, task: AsyncTask):
-
+        """Perform task cleanup"""
         try:
             task.result()
         except asyncio.CancelledError:
@@ -125,9 +126,7 @@ class Nursery(asyncio.Future):
 
     @timeout.setter
     def timeout(self, value: float):
-        """
-        Reset timeout to value
-        """
+        """Reset timeout to given value."""
         self._timeout = value
         if self._timeout_task:
             self._timeout_task.cancel()
@@ -139,8 +138,11 @@ class Nursery(asyncio.Future):
     def cancel(self, exception: Exception = None):
         """
         Cancel nursery.
-        This will stop whatever was started by the nursery,
-        and raise given Exception if needed.
+
+        This will instruct the nursery to stop all remaining tasks,
+        and eventually (after joining or exiting async context) will
+        raise the provided exception.
+
         :param exception: Exception to be raised
         """
         if self._timeout_task:
@@ -164,7 +166,14 @@ class Nursery(asyncio.Future):
                 self.set_result(None)
 
     async def join(self):
-        """Await for all tasks to be finished, or an error to go through"""
+        """
+        Await for all tasks to be finished, or an error to go through.
+
+        Call this last after spawning all your tasks to await for all of
+        them and perform cleanup properly. This only needs to be called
+        if the nursery is *not* used as a context manager: The __aexit__
+        function will call this automatically.
+        """
         assert not self._joining, 'can only join a running nursery'
         self._joining = True
 
@@ -214,6 +223,25 @@ class Nursery(asyncio.Future):
         """
         Start a task on the nursery.
 
+        This is the way to attach some Awaitable elements to the current Nursery.
+
+        Depending on options, the behavior can be quite different:
+        - A task will bubble by default. This means that an error in the task
+        will cause the task to stop (of course), but the nursery will be cancelled
+        as well and raise the given error. This is the desired default behavior.
+        But it can be useful in some cases not to do that, and just ignore a task.
+        Not that if you await manually a task, this cancels bubbling automatically:
+        if you take the pain of waiting for a task, it's not to get all the rest cancelled!
+        - A task can be marked as master, and in that case the nursery will die
+        with the task when done. This is typically useful when you have one main task
+        to be performed and other background ones, which have no meaning if the main one
+        stops.
+
+        Cancellation timeout represents the time we will wait a cancelled task
+        before giving up; a task should not block cancellation at all, except for
+        a brief resources cleanup. An OSError will pop in your face if cancellation
+        takes too long!
+
         :param awaitable: Something to be awaited. Can be a future or a coroutine
         :param name: task name (for logging)
         :param master: If a master task is done, nursery is cancelled
@@ -238,7 +266,20 @@ class Nursery(asyncio.Future):
 
     def fork(self, *, name=None, timeout=0):
         """
-        Fork a new Nursery from the current one
+        Fork a new Nursery from the current one!
+
+        This is useful for keeping a long term nursery,
+        but then spawning an ad-hoc one for some sub-task to be performed.
+        The key feature here is that if the parent nursery is cancelled,
+        the child one gets cancelled as well!
+
+        You will note that an error in the child nursery will not bubble and
+        cancel the parent Nursery automatically. But it will still raise an
+        exception, which can be handled to closes things properly!
+        The main reason for this choice is that if we had wanted to perform
+        some tasks which would cause the parent to die, we would not have need
+        an inner nursery for that...
+
         :param name: name for logging
         :param timeout: None by default
         :returns: Nursery
