@@ -16,7 +16,7 @@ async def test_no_bubble():
     """Test iif no bubble does not cancel nursery"""
     async def trivial():
         await asyncio.sleep(0.01)
-        raise Exception('not interesting')
+        raise ValueError('not interesting')
 
     before = time.time()
 
@@ -35,7 +35,7 @@ async def test_no_bubble_master():
     """Test if no bubble does not raise, but cancels because of master=True"""
     async def trivial():
         await asyncio.sleep(0.01)
-        raise Exception('not interesting')
+        raise ValueError('not interesting')
 
     before = time.time()
 

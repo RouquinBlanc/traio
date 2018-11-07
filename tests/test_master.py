@@ -8,7 +8,7 @@ import time
 import pytest
 
 from tests import run10
-from traio import Nursery, TaskException
+from traio import Nursery
 
 
 @pytest.mark.asyncio
@@ -35,14 +35,10 @@ async def test_master_raises():
         await asyncio.sleep(0.01)
         raise ValueError('boom')
 
-    try:
+    with pytest.raises(ValueError):
         async with Nursery() as n:
             n.start_soon(run10())
             n.start_soon(raiser(), master=True)
-    except TaskException as e:
-        assert isinstance(e.__cause__, ValueError)
-    else:
-        raise Exception('DID NOT RAISE')
 
 
 @pytest.mark.asyncio

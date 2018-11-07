@@ -14,11 +14,9 @@
 """
 
 from .nursery import Nursery
-from .task import TaskException
 
 __version__ = "0.1.1"
 
 __all__ = [
-    'Nursery',
-    'TaskException'
+    'Nursery'
 ]

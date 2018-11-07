@@ -7,19 +7,20 @@ Except:
 """
 import asyncio
 import logging
-from enum import Enum
+from enum import IntEnum
 from typing import Awaitable
 
 from .task import AsyncTask
 
 
-class State(Enum):
+class State(IntEnum):
     """States of a nursery instance"""
     INIT = 0
     STARTED = 1
-    DONE = 2
-    CANCELLED = 3
-    ERROR = 4
+    JOINING = 2
+    DONE = 3
+    CANCELLED = 4
+    ERROR = 5
 
 
 class Nursery:
@@ -78,6 +79,10 @@ class Nursery:
         self._done = asyncio.Future()
         self.state = State.INIT
 
+    @property
+    def _joining(self):
+        return self.state.value >= State.JOINING.value
+
     def __repr__(self):
         """For printing"""
         return self._name
@@ -105,13 +110,28 @@ class Nursery:
         await asyncio.sleep(self.timeout)
         self.cancel(TimeoutError())
 
-    def remove_task(self, task: AsyncTask):
-        """Remove a task from the nursery"""
-        if task in self._pending_tasks:
-            self._pending_tasks.remove(task)
+    def _on_task_done(self, task: AsyncTask):
 
-        if not self._pending_tasks and not self._done.done():
-            self.cancel()
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            self.logger.info('task `%s` got cancelled', task)
+        except Exception as ex:  # pylint: disable=broad-except
+            self.logger.error('task `%s` got an exception: %s', task, ex)
+            if task.bubble:
+                self.cancel(ex)
+        else:
+            self.logger.info('task `%s` done', task)
+        finally:
+            if task.master:
+                self.cancel()
+
+            if task in self._pending_tasks:
+                self._pending_tasks.remove(task)
+
+            if not self._pending_tasks and not self._done.done() and self._joining:
+                # No more tasks scheduled: cancel the
+                self.cancel()
 
     @property
     def timeout(self) -> float:
@@ -162,6 +182,7 @@ class Nursery:
     def start(self):
         """
         Start the Nursery. If any timeout is configured, we start counting from now.
+        :return self for convenience
         """
         assert self.state == State.INIT, 'can only start a nursery once'
         self.state = State.STARTED
@@ -170,12 +191,15 @@ class Nursery:
             # Force timeout reset to now
             self.timeout = self._timeout
 
+        return self
+
     async def join(self):
         """Await for all tasks to be finished, or an error to go through"""
         assert self.state == State.STARTED, 'can only join a started nursery'
+        self.state = State.JOINING
 
         if not self._pending_tasks and not self._done.done():
-            # There is no task registered or left.
+            # There is no task left.
             self._done.set_result(None)
 
         try:
@@ -186,7 +210,8 @@ class Nursery:
             self.state = State.CANCELLED
             raise
         finally:
-            if self.state == State.STARTED:
+            if self.state == State.JOINING:
+                # Neither DONE nor CANCELLED
                 self.state = State.ERROR
 
             # We may still have pending tasks if the Nursery is cancelled
@@ -242,8 +267,9 @@ class Nursery:
             raise OSError('this thing is not awaitable: {}!'.format(awaitable))
 
         task = AsyncTask(
-            self, fut, cancel_timeout=cancel_timeout,
+            fut, cancel_timeout=cancel_timeout,
             bubble=bubble, master=master, name=name)
+        task.add_done_callback(self._on_task_done)
         self.logger.info('adding task `%s` to nursery `%s`', task, self)
         self._pending_tasks.append(task)
         return task
