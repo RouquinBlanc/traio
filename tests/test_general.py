@@ -76,7 +76,7 @@ async def test_join_task():
         assert ret == 3
 
         t = n.start_soon(trivial())
-        assert 3 == await t.join()
+        assert 3 == await t
 
         # Cancel directly
         n.cancel()
@@ -93,7 +93,7 @@ async def test_join_task_cancelled():
 
         t.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await t.join()
+            await t
 
 
 @pytest.mark.asyncio
@@ -105,11 +105,10 @@ async def test_join_task_raises():
 
     before = time.time()
 
-    with pytest.raises(TaskException):
-        async with Nursery(timeout=1) as n:
-            t = n.start_soon(raiser())
-            with pytest.raises(ValueError):
-                await t.join()
+    async with Nursery(timeout=1) as n:
+        t = n.start_soon(raiser())
+        with pytest.raises(ValueError):
+            await t
 
     after = time.time()
     assert (after - before) < 0.3

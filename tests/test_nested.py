@@ -29,6 +29,5 @@ async def test_nested_unrelated():
                 """
                 inner.start_soon(run10())
 
-
     after = time.time()
     assert (after - before) > 0.4, 'for now...'

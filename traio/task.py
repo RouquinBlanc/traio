@@ -64,14 +64,11 @@ class AsyncTask:
 
     # --- API ---
 
-    async def join(self):
-        """
-        Wait for internal future to terminate
-        :returns: whatever the internal things returned
-        """
-        return await self.awaitable
-
     def __await__(self):
+        """
+        Awaiting explicitly a task (never done internally),
+        """
+        self.bubble = False
         return self.awaitable.__await__()
 
     def done(self):
