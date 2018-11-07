@@ -15,7 +15,7 @@ class TaskException(Exception):
         self.__cause__ = cause
 
 
-class AsyncTask:
+class AsyncTask(asyncio.Future):
     """
     Task convenient object used by nursery
     """
@@ -31,6 +31,7 @@ class AsyncTask:
         :param master: when this task finishes, cancel nursery
         :param name: convenient name for logging
         """
+        super().__init__()
         self.nursery = nursery
         self.cancel_timeout = cancel_timeout
         self.bubble = bubble
@@ -46,13 +47,14 @@ class AsyncTask:
 
     def _cleanup(self, fut: asyncio.Future):
         try:
-            fut.result()
+            self.set_result(fut.result())
         except asyncio.CancelledError:
-            self.nursery.logger.info(
-                'task `%s` got cancelled', self)
+            self.nursery.logger.info('task `%s` got cancelled', self)
+            super().cancel()
         except Exception as ex:  # pylint: disable=broad-except
             self.nursery.logger.error(
                 'task `%s` got an exception: %s', self, ex)
+            self.set_exception(ex)
             if self.bubble:
                 self.nursery.cancel(TaskException(ex))
         else:
@@ -64,16 +66,12 @@ class AsyncTask:
 
     # --- API ---
 
-    def __await__(self):
+    def __await__(self, *args, **kwargs):
         """
         Awaiting explicitly a task (never done internally),
         """
         self.bubble = False
-        return self.awaitable.__await__()
-
-    def done(self):
-        """Internal future is done"""
-        return self.awaitable.done()
+        return super().__await__(*args, **kwargs)
 
     def cancel(self):
         """Perform cancellation on internal future"""
