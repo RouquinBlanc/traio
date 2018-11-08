@@ -174,7 +174,7 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
                 self.logger.debug('cancelling nursery `%s`', self)
                 self.set_result(None)
 
-    async def join(self):
+    async def join(self, forever=False):
         """
         Await for all tasks to be finished, or an error to go through.
 
@@ -184,11 +184,13 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
         function will call this automatically.
         """
         assert not self._joining, 'can only join a running nursery'
-        self._joining = True
 
-        if not self._pending_tasks and not self.done():
-            # There is no task left.
-            self.set_result(None)
+        if not forever:
+            self._joining = True
+
+            if not forever and not self._pending_tasks and not self.done():
+                # There is no task left.
+                self.set_result(None)
 
         try:
             await self

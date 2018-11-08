@@ -139,3 +139,16 @@ async def test_join_then_new_no_env():
 
     after = time.time()
     assert (after - before) < 0.5
+
+
+@pytest.mark.asyncio
+async def test_join_forever():
+    """Test joining a task, then joining forever"""
+    n = Nursery(timeout=0.5)
+
+    # will run 0.2 seconds
+    n << trivial()
+
+    with pytest.raises(TimeoutError):
+        # We join forever: this will stay alive even if the trivial task is done!
+        await n.join(forever=True)
