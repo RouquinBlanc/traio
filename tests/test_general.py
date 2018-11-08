@@ -41,7 +41,7 @@ async def test_simple():
     mock = Mock()
 
     async with Nursery() as n:
-        n.start_soon(run(mock))
+        n << run(mock)
 
     assert mock.called
 
@@ -63,4 +63,4 @@ async def test_task_raises():
 
     with pytest.raises(ValueError):
         async with Nursery() as n:
-            n.start_soon(raiser())
+            n << raiser()

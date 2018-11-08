@@ -273,6 +273,10 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
         self._pending_tasks.append(task)
         return task
 
+    def __lshift__(self, other: Awaitable):
+        """Pretty equivalent of `start_soon`"""
+        return self.start_soon(other)
+
     def fork(self, *, name=None, timeout=0):
         """
         Fork a new Nursery from the current one!
