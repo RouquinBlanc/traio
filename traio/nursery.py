@@ -8,6 +8,7 @@ Except:
 
 import asyncio
 import logging
+import time
 from typing import Awaitable
 
 from .task import AsyncTask, NamedFuture
@@ -122,6 +123,24 @@ class Nursery(NamedFuture):
     def set_debug(cls, enabled):
         """Enable Global traio logging or not"""
         DEFAULT_LOGGER.setLevel(logging.DEBUG if enabled else logging.CRITICAL)
+
+    def get_tasks(self):
+        """
+        Get a recursive listing of all running tasks in a nursery.
+        It is a convenient tool to check if any future is staying alive
+        for too long in your system.
+        :return: dict containing task names and running time.
+        """
+        now = time.time()
+
+        tasks = {}
+        for task in self._pending_tasks:
+            if isinstance(task.awaitable, Nursery):
+                tasks[task.awaitable.__repr__()] = task.awaitable.get_tasks()
+            else:
+                tasks[task.__repr__()] = (now - task.start_time)
+
+        return tasks
 
     @property
     def timeout(self) -> float:

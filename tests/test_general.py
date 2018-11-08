@@ -4,6 +4,7 @@ import logging
 import pytest
 
 from mock import Mock
+from tests import run10
 
 from traio import Nursery
 
@@ -73,3 +74,23 @@ async def test_task_raises():
     with pytest.raises(ValueError):
         async with Nursery() as n:
             n << raiser()
+
+
+@pytest.mark.asyncio
+async def test_task_count():
+    """Raise an exception from a task"""
+    async with Nursery() as out:
+        for i in range(1, 11):
+            out << run10()
+            assert len(out.get_tasks()) == i
+
+        async with out.fork() as inner:
+            inner << run10()
+            inner << run10()
+            inner << run10()
+
+            assert len(out.get_tasks()) == 11
+            assert len(inner.get_tasks()) == 3
+
+            # Now cancel both
+            out.cancel()
