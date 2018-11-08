@@ -14,6 +14,10 @@ from .task import AsyncTask
 
 
 class Nursery(asyncio.Future):
+DEFAULT_LOGGER = logging.getLogger('traio')
+DEFAULT_LOGGER.setLevel(logging.CRITICAL)
+
+
     """
     Trio-like nursery (or at least a very light & dumb implementation...)
 
@@ -45,6 +49,11 @@ class Nursery(asyncio.Future):
         - the nursery to be marked as done (join() will return)
     """
 
+    @classmethod
+    def set_debug(cls, enabled):
+        """Enable Global traio logging or not"""
+        DEFAULT_LOGGER.setLevel(logging.DEBUG if enabled else logging.CRITICAL)
+
     def __init__(self, *, logger=None, timeout=0, name=None):
         """
         Create a nursery.
@@ -56,7 +65,7 @@ class Nursery(asyncio.Future):
         super().__init__()
 
         self._name = name or str(id(self))
-        self.logger = logger or logging.getLogger('traio')
+        self.logger = logger or DEFAULT_LOGGER
 
         self._pending_tasks = []
 

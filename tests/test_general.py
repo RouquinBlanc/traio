@@ -1,10 +1,20 @@
 import asyncio
+import logging
 
 import pytest
 
 from mock import Mock
 
 from traio import Nursery
+
+
+def test_logging():
+    """Logging Nursery"""
+    Nursery.set_debug(True)
+    nursery = Nursery()
+    assert nursery.logger.level == logging.DEBUG
+    Nursery.set_debug(False)
+    assert nursery.logger.level >= logging.DEBUG
 
 
 @pytest.mark.asyncio
