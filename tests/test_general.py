@@ -47,6 +47,15 @@ async def test_simple():
 
 
 @pytest.mark.asyncio
+async def test_future():
+    """Simple nursery with a future; should not timeout"""
+    async with Nursery(timeout=0.1) as n:
+        f = asyncio.Future()
+        n.start_soon(f)
+        f.set_result(None)
+
+
+@pytest.mark.asyncio
 async def test_block_raises():
     """Raise an exception from the block"""
     with pytest.raises(ValueError):

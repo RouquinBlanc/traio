@@ -10,14 +10,14 @@ import asyncio
 import logging
 from typing import Awaitable
 
-from .task import AsyncTask
+from .task import AsyncTask, NamedFuture
 
 
-class Nursery(asyncio.Future):
 DEFAULT_LOGGER = logging.getLogger('traio')
 DEFAULT_LOGGER.setLevel(logging.CRITICAL)
 
 
+class Nursery(NamedFuture):
     """
     Trio-like nursery (or at least a very light & dumb implementation...)
 
@@ -62,9 +62,8 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
         :param timeout: timeout before cancelling all tasks
         :param name: nursery name (for logging)
         """
-        super().__init__()
+        super().__init__('Nursery', name)
 
-        self._name = name or str(id(self))
         self.logger = logger or DEFAULT_LOGGER
 
         self._pending_tasks = []
@@ -74,11 +73,7 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
         self.timeout = self._timeout = timeout
 
         self._joining = False
-        self.logger.debug('creating nursery `%s`', self)
-
-    def __repr__(self):
-        """For printing"""
-        return self._name
+        self.logger.debug('creating %s', self)
 
     async def __aenter__(self):
         return self
@@ -108,13 +103,13 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
         try:
             task.result()
         except asyncio.CancelledError:
-            self.logger.debug('task `%s` got cancelled', task)
+            self.logger.debug('%s got cancelled', task)
         except Exception as ex:  # pylint: disable=broad-except
-            self.logger.debug('task `%s` got an exception: %s', task, ex)
+            self.logger.debug('%s got an exception: %s', task, ex)
             if task.bubble:
                 self.cancel(ex)
         else:
-            self.logger.debug('task `%s` done', task)
+            self.logger.debug('%s done', task)
         finally:
             if task.master:
                 self.cancel()
@@ -160,18 +155,18 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
         for task in self._pending_tasks:
             if not task.done():
                 self.logger.debug(
-                    'cancelling active `%s` task from nursery `%s`', task, self)
+                    'cancelling active %s from %s', task, self)
                 task.cancel()
 
         if not self.done():
             if exception:
                 self.logger.warning(
-                    'cancelling nursery `%s` with %s: %s',
+                    'cancelling %s with %s: %s',
                     self, exception.__class__.__name__, exception
                 )
                 self.set_exception(exception)
             else:
-                self.logger.debug('cancelling nursery `%s`', self)
+                self.logger.debug('cancelling %s', self)
                 self.set_result(None)
 
     async def join(self, forever=False):
@@ -195,7 +190,7 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
         try:
             await self
         except asyncio.CancelledError:
-            self.logger.debug('nursery `%s` cancelled from outside!', self)
+            self.logger.debug('%s cancelled from outside!', self)
             raise
         finally:
             # We may still have pending tasks if the Nursery is cancelled
@@ -212,14 +207,13 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
                     except asyncio.CancelledError:
                         pass
                     except asyncio.TimeoutError as ex:
-                        self.logger.error(
-                            'task `%s` could not be cancelled in time', self)
+                        self.logger.error('%s could not be cancelled in time', self)
                         raise OSError(
-                            'Could not cancel task `{}`!!! Check your code!'.format(self)) from ex
+                            'Could not cancel {}!!! Check your code!'.format(self)) from ex
                     except Exception as ex:  # pylint: disable=broad-except
                         # Too late for raising... and we need to move on cleaning other tasks!
                         self.logger.warning(
-                            'task `%s` failed to cancel with exception: %s %s',
+                            '%s failed to cancel with exception: %s %s',
                             task, ex.__class__.__name__, ex)
 
             if self._timeout_task:
@@ -271,7 +265,7 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
             fut, cancel_timeout=cancel_timeout,
             bubble=bubble, master=master, name=name)
         task.add_done_callback(self._on_task_done)
-        self.logger.debug('adding task `%s` to nursery `%s`', task, self)
+        self.logger.debug('adding %s to %s', task, self)
         self._pending_tasks.append(task)
         return task
 
@@ -300,5 +294,5 @@ DEFAULT_LOGGER.setLevel(logging.CRITICAL)
         :returns: Nursery
         """
         nursery = Nursery(logger=self.logger, timeout=timeout, name=name)
-        self.start_soon(nursery, bubble=False)
+        self.start_soon(nursery, bubble=False, name=str(nursery))
         return nursery

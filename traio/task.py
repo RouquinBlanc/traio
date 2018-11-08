@@ -7,7 +7,27 @@ import time
 from typing import Awaitable
 
 
-class AsyncTask(asyncio.Future):
+def describe(thing):
+    """Try to make a pretty description of a thing"""
+    if hasattr(thing, '__name__'):
+        return thing.__name__
+    return thing.__repr__()
+
+
+class NamedFuture(asyncio.Future):
+    """
+    Just a future with a little of logging support
+    """
+    def __init__(self, kind, name):
+        super().__init__()
+        self._repr = '{}({}, {})'.format(kind, str(id(self)), name if name else '-')
+        self.name = name
+
+    def __repr__(self):
+        return self._repr
+
+
+class AsyncTask(NamedFuture):
     """
     Task convenient object used by nursery
     """
@@ -22,18 +42,14 @@ class AsyncTask(asyncio.Future):
         :param master: when this task finishes, cancel nursery
         :param name: convenient name for logging
         """
-        super().__init__()
+        super().__init__('Task', name or describe(awaitable))
         self.cancel_timeout = cancel_timeout
         self.bubble = bubble
         self.master = master
-        self.name = name
 
         self.start_time = time.time()
         self.awaitable = asyncio.ensure_future(awaitable)
         self.awaitable.add_done_callback(self._awaitable_done)
-
-    def __repr__(self):
-        return self.name if self.name is not None else str(self.awaitable)
 
     def _awaitable_done(self, fut: asyncio.Future):
         try:
