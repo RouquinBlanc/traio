@@ -49,11 +49,6 @@ class Nursery(NamedFuture):
         - the nursery to be marked as done (join() will return)
     """
 
-    @classmethod
-    def set_debug(cls, enabled):
-        """Enable Global traio logging or not"""
-        DEFAULT_LOGGER.setLevel(logging.DEBUG if enabled else logging.CRITICAL)
-
     def __init__(self, *, logger=None, timeout=0, name=None):
         """
         Create a nursery.
@@ -122,6 +117,11 @@ class Nursery(NamedFuture):
                 self.cancel()
 
     # --- Public API ---
+
+    @classmethod
+    def set_debug(cls, enabled):
+        """Enable Global traio logging or not"""
+        DEFAULT_LOGGER.setLevel(logging.DEBUG if enabled else logging.CRITICAL)
 
     @property
     def timeout(self) -> float:
