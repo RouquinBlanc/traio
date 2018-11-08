@@ -40,7 +40,6 @@ class AsyncTask(asyncio.Future):
             self.set_result(fut.result())
         except asyncio.CancelledError:
             super().cancel()
-            raise
         except Exception as ex:  # pylint: disable=broad-except
             self.set_exception(ex)
 
