@@ -1,4 +1,4 @@
-typing; python_version<"3.6"
+-r requirements.txt
 coverage
 mock
 python-coveralls

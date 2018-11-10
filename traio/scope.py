@@ -9,11 +9,13 @@ Except:
 import asyncio
 import logging
 import time
-from typing import Awaitable
+from typing import Awaitable, Optional
+from aiocontextvars import ContextVar
 
 from traio.task import NamedFuture, TaskWrapper
 
 
+SCOPE = ContextVar('traio_scope')
 DEFAULT_LOGGER = logging.getLogger('traio')
 DEFAULT_LOGGER.setLevel(logging.CRITICAL)
 
@@ -69,16 +71,22 @@ class Scope(NamedFuture):
         self.timeout = self._timeout = timeout
 
         self._joining = False
+        self._token = None
         self.logger.debug('creating %s', self)
 
     async def __aenter__(self):
+        assert self._token is None, 'can only enter scope context once!'
+        self._token = SCOPE.set(self)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
             # An exception occurred: cleanup
             self.cancel(exc_val)
-        await self.join()
+        try:
+            await self.join()
+        finally:
+            SCOPE.reset(self._token)
 
     def __enter__(self):
         """Protect against calling as regular context manager"""
@@ -118,6 +126,26 @@ class Scope(NamedFuture):
                 self.cancel()
 
     # --- Public API ---
+
+    @staticmethod
+    def get_current() -> Optional['Scope']:
+        """
+        Get the current Scope instance, if any is set.
+        current scope is set:
+            - On any task spawned by a Scope
+            - Inside the context of a Scope when used with 'async with'
+            - Or whenever the scope is set manually with `Scope.set_current()`
+        :returns:
+        """
+        return SCOPE.get(None)
+
+    @staticmethod
+    def set_current(scope: Optional['Scope']):
+        """
+        Change current active scope. Do not mess to much with this!
+        :param scope: Scope or None
+        """
+        return SCOPE.set(scope)
 
     @classmethod
     def set_debug(cls, enabled):
@@ -280,9 +308,12 @@ class Scope(NamedFuture):
         else:
             raise OSError('this thing is not awaitable: {}!'.format(awaitable))
 
+        # Set this scope as current while we spawn a task
+        token = SCOPE.set(self)
         task = TaskWrapper(
             fut, cancel_timeout=cancel_timeout,
             bubble=bubble, master=master, name=name)
+        SCOPE.reset(token)
         task.add_done_callback(self._on_task_done)
         self.logger.debug('adding %s to %s', task, self)
         self._pending_tasks.append(task)
