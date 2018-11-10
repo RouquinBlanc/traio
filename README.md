@@ -46,6 +46,10 @@ async def main():
             scope.spawn(fetch_url(i))
 ```
 
+The `Scope.spawn` method, called on an awaitable thing, will spawn a task and
+register it on the scope. An equivalent exist using the `<<` operator (see next
+example).
+
 When reaching the end of the context block, the code will block until:
 - all tasks are done
 - or the timeout is over
@@ -66,7 +70,7 @@ async def main():
     scope = Scope(timeout=10)
     
     for i in range(10):
-        scope.spawn(fetch_url(i))
+        scope << fetch_url(i)
         
     await scope.join()
 ```
@@ -107,7 +111,7 @@ async def main():
 
     async with Scope(timeout=0.5) as n:
         # This will try to run for 10 seconds
-        n.spawn(fetch_url())
+        n << fetch_url()
         
         # This will run a bit then raise (but not 'bubble')
         n.spawn(trivial(), bubble=False)
@@ -135,7 +139,7 @@ async def main():
 
     async with Scope(timeout=0.5) as n:
         # This will try to run for 10 seconds
-        n.spawn(fetch_url())
+        n << fetch_url()
         
         # This will run a bit then scope gets cancelled when it ends
         n.spawn(trivial(), master=True)
@@ -163,9 +167,36 @@ async def main():
     async with Scope(timeout=0.2):
         async with Scope(timeout=0.5) as inner:
             # This will try to run for 10 seconds
-            inner.spawn(fetch_url())
+            inner << fetch_url()
         
     # Here the outer Scope will timeout first and will cancel the inner one!
+```
+
+### Getting current Scope
+
+Using the awesome [contextvars](https://www.python.org/dev/peps/pep-0567/) and 
+the current backport of it [aiocontextvars](https://github.com/fantix/aiocontextvars),
+we can keep track of the current active scope without necessarily passing the
+scope variable all along the call chain.
+
+```python
+async def handler(client):
+    # This runs in the scope `main_scope`
+    # Create a subscope of the current one
+    async with Scope.get_current().fork() as s:
+        # Here we are in the scope of `s`, as well as spawned tasks
+        s << do_something(client)
+        s << do_something_else(client)
+        
+async def server(main_scope):
+    # This runs in the scope `main_scope`
+    client = await new_connection()
+    main_scope.spawn(handler(client))
+        
+async def main():
+    async with Scope() as main_scope:
+        main_scope << server(main_scope)
+        main_scope << do_something_else()
 ```
 
 ### Caveat
