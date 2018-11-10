@@ -5,23 +5,23 @@ This looks overkill because you just need to Ctrl-C
 or close the loop to reach the same, but thing that this
 could be run in a corner of your code, with a running loop,
 and allow you to clean up all your tasks related to your TCP server
-with just a cancel on the main nursery!
+with just a cancel on the main scope!
 """
 import asyncio
 import logging
 
-from traio import Nursery
+from traio import Scope
 
 
 class Server:
-    """Async TCP server using a nursery to clean up everything"""
+    """Async TCP server using a scope to clean up everything"""
     def __init__(self):
-        self.nursery = Nursery(name='TCP')
-        self.nursery.add_done_callback(self.stop)
+        self.scope = Scope(name='TCP')
+        self.scope.add_done_callback(self.stop)
         self.server = None
 
     def stop(self, _):
-        print('nursery done. closing server')
+        print('scope done. closing server')
         if self.server:
             self.server.close()
 
@@ -29,14 +29,14 @@ class Server:
         # Start TCP server
         self.server = await asyncio.start_server(self.client_connected, '0.0.0.0', 5000)
 
-        # Join the nursery forever
-        await self.nursery.join(forever=True)
+        # Join the scope forever
+        await self.scope.join(forever=True)
 
     async def client_connected(self, reader, writer):
         peer = writer.get_extra_info('peername')
         print(peer, 'connected')
 
-        async with self.nursery.fork(name=peer) as ctx:
+        async with self.scope.fork(name=peer) as ctx:
             # We make one context for this connection
             # Here it's overkill, but you could have to spawn many jobs!
             try:
@@ -55,10 +55,10 @@ class Server:
                     print(peer, 'received:', txt)
 
                     if txt == 'stop':
-                        # Cancel the nursery and exit
+                        # Cancel the scope and exit
                         print('>>> stopping server')
                         writer.write('Closing!\n'.encode())
-                        self.nursery.cancel()
+                        self.scope.cancel()
                         break
 
                     # Write reply and loop
@@ -81,7 +81,7 @@ class Server:
 async def main():
     # Enable traio internal logging
     logging.basicConfig()
-    Nursery.set_debug(True)
+    Scope.set_debug(True)
 
     await Server().run()
 

@@ -1,5 +1,5 @@
 """
-Testing the `bubble` flag feature of `Nursery.start_soon`
+Testing the `bubble` flag feature of `Scope.spawn`
 """
 
 import asyncio
@@ -8,12 +8,12 @@ import time
 import pytest
 
 from tests import run10
-from traio import Nursery
+from traio import Scope
 
 
 @pytest.mark.asyncio
 async def test_no_bubble():
-    """Test iif no bubble does not cancel nursery"""
+    """Test iif no bubble does not cancel scope"""
     async def trivial():
         await asyncio.sleep(0.01)
         raise ValueError('not interesting')
@@ -21,9 +21,9 @@ async def test_no_bubble():
     before = time.time()
 
     with pytest.raises(TimeoutError):
-        async with Nursery(timeout=0.5) as n:
-            n.start_soon(run10())
-            n.start_soon(trivial(), bubble=False)
+        async with Scope(timeout=0.5) as n:
+            n.spawn(run10())
+            n.spawn(trivial(), bubble=False)
 
     after = time.time()
 
@@ -39,9 +39,9 @@ async def test_no_bubble_master():
 
     before = time.time()
 
-    async with Nursery(timeout=0.5) as n:
-        n.start_soon(run10())
-        n.start_soon(trivial(), bubble=False, master=True)
+    async with Scope(timeout=0.5) as n:
+        n.spawn(run10())
+        n.spawn(trivial(), bubble=False, master=True)
 
     after = time.time()
 

@@ -1,5 +1,5 @@
 """
-Test joining a task in the middle of the nursery
+Test joining a task in the middle of the scope
 """
 
 import asyncio
@@ -8,7 +8,7 @@ import time
 import pytest
 
 from tests import run10
-from traio import Nursery
+from traio import Scope
 
 
 async def trivial():
@@ -26,11 +26,11 @@ async def test_join_task():
     """Test joining a task and check result"""
     before = time.time()
 
-    async with Nursery(timeout=0.5) as n:
-        ret = await n.start_soon(trivial())
+    async with Scope(timeout=0.5) as n:
+        ret = await n.spawn(trivial())
         assert ret == 3
 
-        t = n.start_soon(trivial())
+        t = n.spawn(trivial())
         assert 3 == await t
 
         # Cancel directly
@@ -43,8 +43,8 @@ async def test_join_task():
 @pytest.mark.asyncio
 async def test_join_task_cancelled():
     """Test joining a task, but cancelled"""
-    async with Nursery(timeout=1) as n:
-        t = n.start_soon(run10())
+    async with Scope(timeout=1) as n:
+        t = n.spawn(run10())
 
         t.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -54,9 +54,9 @@ async def test_join_task_cancelled():
 @pytest.mark.asyncio
 async def test_join_task_cancelled_no_env():
     """Test joining a task, but cancelled"""
-    n = Nursery(timeout=1)
+    n = Scope(timeout=1)
 
-    t = n.start_soon(run10())
+    t = n.spawn(run10())
 
     t.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -70,8 +70,8 @@ async def test_join_task_raises():
     """Test joining a task, but raises"""
     before = time.time()
 
-    async with Nursery(timeout=1) as n:
-        t = n.start_soon(raiser())
+    async with Scope(timeout=1) as n:
+        t = n.spawn(raiser())
         with pytest.raises(ValueError):
             # Catching the error here prevents bubbling
             await t
@@ -85,9 +85,9 @@ async def test_join_task_raises_no_env():
     """Test joining a task, but raises"""
     before = time.time()
 
-    n = Nursery(timeout=1)
+    n = Scope(timeout=1)
 
-    t = n.start_soon(raiser())
+    t = n.spawn(raiser())
     with pytest.raises(ValueError):
         # Catching the error here prevents bubbling
         await t
@@ -103,16 +103,16 @@ async def test_join_then_new():
     """Test joining a task, then spawn another one"""
     before = time.time()
 
-    async with Nursery(timeout=1) as n:
+    async with Scope(timeout=1) as n:
         # takes 0.2 seconds
-        await n.start_soon(trivial())
+        await n.spawn(trivial())
         assert (time.time() - before) < 0.3
 
-        # At this point, the nursery should be still started
+        # At this point, the scope should be still started
         assert not n.done()
 
         # will 0.2 seconds
-        n.start_soon(trivial())
+        n.spawn(trivial())
 
     after = time.time()
     assert (after - before) < 0.5
@@ -123,17 +123,17 @@ async def test_join_then_new_no_env():
     """Test joining a task, then spawn another one"""
     before = time.time()
 
-    n = Nursery(timeout=1)
+    n = Scope(timeout=1)
 
     # takes 0.2 seconds
-    await n.start_soon(trivial())
+    await n.spawn(trivial())
     assert (time.time() - before) < 0.3
 
-    # At this point, the nursery should be still started
+    # At this point, the scope should be still started
     assert not n.done()
 
     # will 0.2 seconds
-    n.start_soon(trivial())
+    n.spawn(trivial())
 
     await n.join()
 
@@ -144,7 +144,7 @@ async def test_join_then_new_no_env():
 @pytest.mark.asyncio
 async def test_join_forever():
     """Test joining a task, then joining forever"""
-    n = Nursery(timeout=0.5)
+    n = Scope(timeout=0.5)
 
     # will run 0.2 seconds
     n << trivial()

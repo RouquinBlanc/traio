@@ -7,7 +7,7 @@ import time
 import pytest
 
 from tests import run10
-from traio import Nursery
+from traio import Scope
 
 
 @pytest.mark.asyncio
@@ -16,18 +16,18 @@ async def test_nested_unrelated():
     Two nested Nurseries, but completely unrelated.
     Remember that we cannot do magic (yet).
     As long as the inner code is blocking and
-    not related to the surrounding Nursery,
+    not related to the surrounding Scope,
     The outer timeout will be stuck!
     """
     before = time.time()
 
     with pytest.raises(TimeoutError):
-        async with Nursery(timeout=0.2):
-            async with Nursery(timeout=0.5) as inner:
+        async with Scope(timeout=0.2):
+            async with Scope(timeout=0.5) as inner:
                 """
                 A completely different
                 """
-                inner.start_soon(run10())
+                inner.spawn(run10())
 
     after = time.time()
     assert (after - before) > 0.4, 'for now...'
@@ -41,9 +41,9 @@ async def test_nested_fork_timeout_parent():
     before = time.time()
 
     with pytest.raises(TimeoutError):
-        async with Nursery(timeout=0.1) as parent:
+        async with Scope(timeout=0.1) as parent:
             async with parent.fork() as inner:
-                inner.start_soon(run10())
+                inner.spawn(run10())
 
     after = time.time()
     assert (after - before) < 0.2
@@ -57,9 +57,9 @@ async def test_nested_fork_timeout_parent_no_env():
     before = time.time()
 
     with pytest.raises(TimeoutError):
-        async with Nursery(timeout=0.1) as parent:
+        async with Scope(timeout=0.1) as parent:
             inner = parent.fork()
-            inner.start_soon(run10())
+            inner.spawn(run10())
             await inner.join()
 
     after = time.time()
@@ -72,16 +72,16 @@ async def test_nested_fork_timeout_inner():
     Two nested Nurseries, but completely unrelated.
     Remember that we cannot do magic (yet).
     As long as the inner code is blocking and
-    not related to the surrounding Nursery,
+    not related to the surrounding Scope,
     The outer timeout will be stuck!
     """
     before = time.time()
 
     with pytest.raises(TimeoutError):
-        async with Nursery() as parent:
-            parent.start_soon(run10())
+        async with Scope() as parent:
+            parent.spawn(run10())
             async with parent.fork(timeout=0.1) as inner:
-                inner.start_soon(run10())
+                inner.spawn(run10())
 
     after = time.time()
     assert (after - before) < 0.2
@@ -93,24 +93,24 @@ async def test_nested_fork_timeout_sibling():
     Two nested Nurseries, but completely unrelated.
     Remember that we cannot do magic (yet).
     As long as the inner code is blocking and
-    not related to the surrounding Nursery,
+    not related to the surrounding Scope,
     The outer timeout will be stuck!
     """
     before = time.time()
 
-    async def fork_my_parent(nursery, timeout: float = 0):
-        async with nursery.fork(timeout=timeout) as inner:
-            inner.start_soon(run10())
+    async def fork_my_parent(scope, timeout: float = 0):
+        async with scope.fork(timeout=timeout) as inner:
+            inner.spawn(run10())
 
     with pytest.raises(TimeoutError):
-        async with Nursery() as parent:
-            parent.start_soon(run10())
+        async with Scope() as parent:
+            parent.spawn(run10())
 
             # First long one
-            parent.start_soon(fork_my_parent(parent))
+            parent.spawn(fork_my_parent(parent))
 
             # Second will timeout soon
-            parent.start_soon(fork_my_parent(parent, timeout=0.1))
+            parent.spawn(fork_my_parent(parent, timeout=0.1))
 
     after = time.time()
     assert (after - before) < 0.2
@@ -122,7 +122,7 @@ async def test_nested_fork_raises_catch():
     Two nested Nurseries, but completely unrelated.
     Remember that we cannot do magic (yet).
     As long as the inner code is blocking and
-    not related to the surrounding Nursery,
+    not related to the surrounding Scope,
     The outer timeout will be stuck!
     """
     before = time.time()
@@ -132,11 +132,11 @@ async def test_nested_fork_raises_catch():
         raise ValueError('boom!')
 
     with pytest.raises(TimeoutError):
-        async with Nursery(timeout=0.5) as parent:
-            parent.start_soon(run10(), name='run10')
+        async with Scope(timeout=0.5) as parent:
+            parent.spawn(run10(), name='run10')
 
             inner = parent.fork()
-            inner.start_soon(bomb())
+            inner.spawn(bomb())
 
             with pytest.raises(ValueError):
                 # This should prevent bubbling
@@ -144,3 +144,46 @@ async def test_nested_fork_raises_catch():
 
     after = time.time()
     assert (after - before) > 0.4
+
+
+@pytest.mark.asyncio
+async def test_context():
+
+    assert Scope.get_current() is None
+
+    # Create a first Scope
+    n = Scope()
+
+    n2 = Scope()
+
+    Scope.set_current(n2)
+    assert Scope.get_current() == n2
+
+    async def sub():
+        old = Scope.get_current()
+        assert old == n
+
+        async with old.fork() as new:
+            assert Scope.get_current() == new
+
+            async def test_old():
+                assert Scope.get_current() == old
+
+            async def test_new():
+                assert Scope.get_current() == new
+
+            await test_new()
+            await asyncio.ensure_future(test_new())
+            new << test_new()
+
+            old << test_old()
+
+    async with n:
+        assert Scope.get_current() == n
+
+        n << sub()
+
+    assert Scope.get_current() == n2
+
+    Scope.set_current(None)
+    assert Scope.get_current() is None

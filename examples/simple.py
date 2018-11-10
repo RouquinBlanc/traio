@@ -1,6 +1,6 @@
 import asyncio
 
-from traio import Nursery
+from traio import Scope
 
 
 async def main():
@@ -8,25 +8,25 @@ async def main():
 
     async def run():
         """
-        Run for 10 seconds, with an internal nursery
+        Run for 10 seconds, with an internal scope
         :return:
         """
-        async with Nursery(name='internal') as n2:
-            print('running an internal nursery')
+        async with Scope(name='internal') as n2:
+            print('running an internal scope')
 
             # Launch a background task loop
             async def periodic2():
                 while True:
                     print('periodic2')
                     await asyncio.sleep(1)
-            n2.start_soon(periodic2(), name='periodic2')
+            n2.spawn(periodic2(), name='periodic2')
 
-            # Run content inside the nursery env
+            # Run content inside the scope env
             print("Sleep for 10 seconds...")
             await asyncio.sleep(10)
             print("done sleeping!")
 
-            # Cancel the nursery (as we have a periodic task)
+            # Cancel the scope (as we have a periodic task)
             n2.cancel()
 
     async def _start_periodic_task():
@@ -38,15 +38,15 @@ async def main():
             await asyncio.sleep(1)
         raise Exception('boom!')
 
-    async with Nursery(timeout=10, name='main') as nursery:
+    async with Scope(timeout=10, name='main') as scope:
         # Launch a background task, catching exceptions if any
-        nursery.start_soon(_start_periodic_task(), name='background task', bubble=False)
+        scope.spawn(_start_periodic_task(), name='background task', bubble=False)
 
-        # Run our main action which will cancel the nursery as master
-        nursery.start_soon(run(), name='main action', master=True)
+        # Run our main action which will cancel the scope as master
+        scope.spawn(run(), name='main action', master=True)
 
         # You can reset the original timeout to shorter
-        nursery.timeout = 5
+        scope.timeout = 5
 
     print('all done')
 

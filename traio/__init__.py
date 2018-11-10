@@ -13,10 +13,10 @@
     but still want to have a code you can read and manage...
 """
 
-from .nursery import Nursery
+from .scope import Scope
 
 __version__ = "0.3.1"
 
 __all__ = [
-    'Nursery'
+    'Scope'
 ]

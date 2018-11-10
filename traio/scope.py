@@ -11,14 +11,14 @@ import logging
 import time
 from typing import Awaitable
 
-from .task import AsyncTask, NamedFuture
+from traio.task import NamedFuture, TaskWrapper
 
 
 DEFAULT_LOGGER = logging.getLogger('traio')
 DEFAULT_LOGGER.setLevel(logging.CRITICAL)
 
 
-class Nursery(NamedFuture):
+class Scope(NamedFuture):
     """
     Trio-like nursery (or at least a very light & dumb implementation...)
 
@@ -26,39 +26,39 @@ class Nursery(NamedFuture):
 
     You can use it in 2 ways:
 
-    1) With an environment, automatically joining the nursery at exit
+    1) With an environment, automatically joining the scope at exit
 
     ```
-    async with Nursery(...) as nursery:
-        nursery.start_soon(my_task1)
-        nursery.start_soon(my_task2)
+    async with Scope(...) as scope:
+        scope.spawn(my_task1)
+        scope.spawn(my_task2)
     ```
 
     2) Without it:
     ```
-    nursery = Nursery(...)
-    nursery.start_soon(my_task1)
-    nursery.start_soon(my_task2)
+    scope = Scope(...)
+    scope.spawn(my_task1)
+    scope.spawn(my_task2)
 
     [...]
-    await nursery.join()
+    await scope.join()
     ```
 
-    At any point in time, the nursery can be cancelled (with or without an exception).
+    At any point in time, the scope can be cancelled (with or without an exception).
     This will cause:
         - the stopping and cleaning up of all tasks
-        - the nursery to be marked as done (join() will return)
+        - the scope to be marked as done (join() will return)
     """
 
     def __init__(self, *, logger=None, timeout=0, name=None):
         """
-        Create a nursery.
+        Create a scope.
 
         :param logger: Can pass a logger. By default using `traio` logger
         :param timeout: timeout before cancelling all tasks
-        :param name: nursery name (for logging)
+        :param name: scope name (for logging)
         """
-        super().__init__('Nursery', name)
+        super().__init__('Scope', name)
 
         self.logger = logger or DEFAULT_LOGGER
 
@@ -83,18 +83,18 @@ class Nursery(NamedFuture):
     def __enter__(self):
         """Protect against calling as regular context manager"""
         raise RuntimeError(
-            "asynchronous context manager, use 'async with Nursery(...)'!"
+            "asynchronous context manager, use 'async with Scope(...)'!"
         )
 
     def __exit__(self, *_):  # pragma: no cover
         assert False, 'This should never be called'
 
     async def _timeout_handler(self):
-        """When timeout is reached, nursery is cancelled."""
+        """When timeout is reached, scope is cancelled."""
         await asyncio.sleep(self.timeout)
         self.cancel(TimeoutError())
 
-    def _on_task_done(self, task: AsyncTask):
+    def _on_task_done(self, task: TaskWrapper):
         """Perform task cleanup"""
         try:
             task.result()
@@ -126,7 +126,7 @@ class Nursery(NamedFuture):
 
     def get_tasks(self):
         """
-        Get a recursive listing of all running tasks in a nursery.
+        Get a recursive listing of all running tasks in a scope.
         It is a convenient tool to check if any future is staying alive
         for too long in your system.
         :return: dict containing task names and running time.
@@ -135,7 +135,7 @@ class Nursery(NamedFuture):
 
         tasks = {}
         for task in self._pending_tasks:
-            if isinstance(task.awaitable, Nursery):
+            if isinstance(task.awaitable, Scope):
                 tasks[task.awaitable.__repr__()] = task.awaitable.get_tasks()
             else:
                 tasks[task.__repr__()] = (now - task.start_time)
@@ -160,9 +160,9 @@ class Nursery(NamedFuture):
     # pylint: disable=arguments-differ
     def cancel(self, exception: Exception = None):
         """
-        Cancel nursery.
+        Cancel scope.
 
-        This will instruct the nursery to stop all remaining tasks,
+        This will instruct the scope to stop all remaining tasks,
         and eventually (after joining or exiting async context) will
         raise the provided exception.
 
@@ -194,10 +194,10 @@ class Nursery(NamedFuture):
 
         Call this last after spawning all your tasks to await for all of
         them and perform cleanup properly. This only needs to be called
-        if the nursery is *not* used as a context manager: The __aexit__
+        if the scope is *not* used as a context manager: The __aexit__
         function will call this automatically.
         """
-        assert not self._joining, 'can only join a running nursery'
+        assert not self._joining, 'can only join a running scope'
 
         if not forever:
             self._joining = True
@@ -212,7 +212,7 @@ class Nursery(NamedFuture):
             self.logger.debug('%s cancelled from outside!', self)
             raise
         finally:
-            # We may still have pending tasks if the Nursery is cancelled
+            # We may still have pending tasks if the Scope is cancelled
             for task in self._pending_tasks:
                 if not task.done():
                     task.cancel()
@@ -242,21 +242,21 @@ class Nursery(NamedFuture):
                 except asyncio.CancelledError:
                     pass
 
-    def start_soon(self, awaitable: Awaitable, *,
-                   name=None, master=False, bubble=True, cancel_timeout=1):
+    def spawn(self, awaitable: Awaitable, *,
+              name=None, master=False, bubble=True, cancel_timeout=1):
         """
-        Start a task on the nursery.
+        Start a task on the scope.
 
-        This is the way to attach some Awaitable elements to the current Nursery.
+        This is the way to attach some Awaitable elements to the current Scope.
 
         Depending on options, the behavior can be quite different:
         - A task will bubble by default. This means that an error in the task
-        will cause the task to stop (of course), but the nursery will be cancelled
+        will cause the task to stop (of course), but the scope will be cancelled
         as well and raise the given error. This is the desired default behavior.
         But it can be useful in some cases not to do that, and just ignore a task.
         Not that if you await manually a task, this cancels bubbling automatically:
         if you take the pain of waiting for a task, it's not to get all the rest cancelled!
-        - A task can be marked as master, and in that case the nursery will die
+        - A task can be marked as master, and in that case the scope will die
         with the task when done. This is typically useful when you have one main task
         to be performed and other background ones, which have no meaning if the main one
         stops.
@@ -268,8 +268,8 @@ class Nursery(NamedFuture):
 
         :param awaitable: Something to be awaited. Can be a future or a coroutine
         :param name: task name (for logging)
-        :param master: If a master task is done, nursery is cancelled
-        :param bubble: errors in the task will cancel nursery
+        :param master: If a master task is done, scope is cancelled
+        :param bubble: errors in the task will cancel scope
         :param cancel_timeout: Time we allow for cancellation
             (if the task wants to catch it and do cleanup)
         :returns: AsyncTask
@@ -280,7 +280,7 @@ class Nursery(NamedFuture):
         else:
             raise OSError('this thing is not awaitable: {}!'.format(awaitable))
 
-        task = AsyncTask(
+        task = TaskWrapper(
             fut, cancel_timeout=cancel_timeout,
             bubble=bubble, master=master, name=name)
         task.add_done_callback(self._on_task_done)
@@ -289,29 +289,29 @@ class Nursery(NamedFuture):
         return task
 
     def __lshift__(self, other: Awaitable):
-        """Pretty equivalent of `start_soon`"""
-        return self.start_soon(other)
+        """Pretty equivalent of `spawn`"""
+        return self.spawn(other)
 
     def fork(self, *, name=None, timeout=0):
         """
-        Fork a new Nursery from the current one!
+        Fork a new Scope from the current one!
 
-        This is useful for keeping a long term nursery,
+        This is useful for keeping a long term scope,
         but then spawning an ad-hoc one for some sub-task to be performed.
-        The key feature here is that if the parent nursery is cancelled,
+        The key feature here is that if the parent scope is cancelled,
         the child one gets cancelled as well!
 
-        You will note that an error in the child nursery will not bubble and
-        cancel the parent Nursery automatically. But it will still raise an
+        You will note that an error in the child scope will not bubble and
+        cancel the parent Scope automatically. But it will still raise an
         exception, which can be handled to closes things properly!
         The main reason for this choice is that if we had wanted to perform
         some tasks which would cause the parent to die, we would not have need
-        an inner nursery for that...
+        an inner scope for that...
 
         :param name: name for logging
         :param timeout: None by default
-        :returns: Nursery
+        :returns: Scope
         """
-        nursery = Nursery(logger=self.logger, timeout=timeout, name=name)
-        self.start_soon(nursery, bubble=False, name=str(nursery))
-        return nursery
+        scope = Scope(logger=self.logger, timeout=timeout, name=name)
+        self.spawn(scope, bubble=False, name=str(scope))
+        return scope

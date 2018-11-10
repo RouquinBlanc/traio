@@ -11,8 +11,9 @@ unreadable.
 [Trio](https://github.com/python-trio/trio) is there to make asynchronous programming easy and more "for humans".
 
 Traio (as kind of Trio on top of Asyncio) let you use asyncio with a little of
-the philosophy of Trio, mostly the Nursery concept. It also synthesize the most
-common pattern we are using for handling async tasks in a sane way.
+the philosophy of Trio, mostly the Nursery concept (called Scope here).
+It also synthesize the most common pattern we are using for handling async
+tasks in a sane way.
 
 ## Disclaimer
 
@@ -27,34 +28,34 @@ asyncio code, which can look appealing.
 
 ## Examples
 
-### Simple Nursery
+### Simple Scope
 
-The main way to use the Nursery is (like in Trio) as a context manager
+The main way to use the Scope is (like in Trio) as a context manager
 
 ```python
 import asyncio
-from traio import Nursery
+from traio import Scope
 
 async def fetch_url(x):
     # Do something long
     await asyncio.sleep(3)
 
 async def main():
-    async with Nursery(timeout=10) as nursery:
+    async with Scope(timeout=10) as scope:
         for i in range(10):
-            nursery.start_soon(fetch_url(i))
+            scope.spawn(fetch_url(i))
 ```
 
 When reaching the end of the context block, the code will block until:
 - all tasks are done
 - or the timeout is over
-- or the nursery get's cancelled.
+- or the scope get's cancelled.
 
-You can also use the Nursery without context manager:
+You can also use the Scope without context manager:
 
 ```python
 import asyncio
-from traio import Nursery
+from traio import Scope
 
 async def fetch_url(x):
     # Do something long
@@ -62,29 +63,29 @@ async def fetch_url(x):
 
 async def main():
     # Equivalent to previous example
-    nursery = Nursery(timeout=10)
+    scope = Scope(timeout=10)
     
     for i in range(10):
-        nursery.start_soon(fetch_url(i))
+        scope.spawn(fetch_url(i))
         
-    await nursery.join()
+    await scope.join()
 ```
 
 ### Names and logger
 
 If you went deep enough in asyncio misteries, you know that tracing code is
-(for now) kind of a nightmare... For that reason, Nursery as well as tasks can
-be instantiated with a name. The Nursery can also take a logger which will be
+(for now) kind of a nightmare... For that reason, Scope as well as tasks can
+be instantiated with a name. The Scope can also take a logger which will be
 used for tracing most of the calls and task life cycle, mostly with debug level. 
 
 ### Special tasks
 
-`Nursery.start_soon` can be called with different parameters with interesting
+`Scope.spawn` can be called with different parameters with interesting
 effects:
 
 - The `bubble` boolean parameter controls task error bubbling. A task will
 bubble by default. This means that an error in the taskwill cause the task 
-to stop (of course), but the nursery will be cancelled as well and raise 
+to stop (of course), but the scope will be cancelled as well and raise 
 the given error. This is the desired default behavior.
 But it can be useful in some cases not to do that, and just ignore a task.
 Not that if you await manually a task, this cancels bubbling automatically:
@@ -92,7 +93,7 @@ if you take the pain of waiting for a task, it's not to get all the rest cancell
 
 ```python
 import asyncio
-from traio import Nursery
+from traio import Scope
 
 async def fetch_url():
     # Do something long
@@ -104,24 +105,24 @@ async def trivial():
 
 async def main():
 
-    async with Nursery(timeout=0.5) as n:
+    async with Scope(timeout=0.5) as n:
         # This will try to run for 10 seconds
-        n.start_soon(fetch_url())
+        n.spawn(fetch_url())
         
         # This will run a bit then raise (but not 'bubble')
-        n.start_soon(trivial(), bubble=False)
+        n.spawn(trivial(), bubble=False)
         
-    # Eventually after 0.5 seconds the Nursery times out and
+    # Eventually after 0.5 seconds the Scope times out and
     # gives a TImeoutError
 ```
 
-- A task can be marked as `master`, in that case the nursery will die with the 
+- A task can be marked as `master`, in that case the scope will die with the 
 task when done. This is typically useful when you have one main task to be
 performed and other background ones, which have no meaning if the main one stops.
 
 ```python
 import asyncio
-from traio import Nursery
+from traio import Scope
 
 async def fetch_url():
     # Do something long
@@ -132,26 +133,26 @@ async def trivial():
 
 async def main():
 
-    async with Nursery(timeout=0.5) as n:
+    async with Scope(timeout=0.5) as n:
         # This will try to run for 10 seconds
-        n.start_soon(fetch_url())
+        n.spawn(fetch_url())
         
-        # This will run a bit then nursery gets cancelled when it ends
-        n.start_soon(trivial(), master=True)
+        # This will run a bit then scope gets cancelled when it ends
+        n.spawn(trivial(), master=True)
 ```
 
 Note you can combine both flags; If bubble is False and master is True,
-the nursery will exit silently when the task is done, even with an exception.
+the scope will exit silently when the task is done, even with an exception.
 
-### Nested Nursery
+### Nested Scope
 
-That's one of the most exciting ones: you can spawn a sub-nursery from the
-original one, which will follow the same rules as any Nursery but will as well
+That's one of the most exciting ones: you can spawn a sub-scope from the
+original one, which will follow the same rules as any Scope but will as well
 die if the parent is cancelled!
 
 ```python
 import asyncio
-from traio import Nursery
+from traio import Scope
 
 async def fetch_url():
     # Do something long
@@ -159,31 +160,31 @@ async def fetch_url():
 
 async def main():
 
-    async with Nursery(timeout=0.2):
-        async with Nursery(timeout=0.5) as inner:
+    async with Scope(timeout=0.2):
+        async with Scope(timeout=0.5) as inner:
             # This will try to run for 10 seconds
-            inner.start_soon(fetch_url())
+            inner.spawn(fetch_url())
         
-    # Here the outer Nursery will timeout first and will cancel the inner one!
+    # Here the outer Scope will timeout first and will cancel the inner one!
 ```
 
 ### Caveat
 
 Remember that **we do not modify the way asyncio works**. Asyncio is still
-in charge of scheduling all tasks. In that aspect, if you block you nursery
-awaiting for something *not* handled by the nursery, the timeouts and cancellation
+in charge of scheduling all tasks. In that aspect, if you block you scope
+awaiting for something *not* handled by the scope, the timeouts and cancellation
 won't apply until your current task is done. Instead, try to wrap your task in a
-call to `Nursery.start_soon`.
+call to `Scope.spawn`.
 
 So instead of this:
 ```python
-async with Nursery() as n:
+async with Scope() as n:
     await my_very_long_task()
 ```
 try to do this:
 ```python
-async with Nursery() as n:
-    await n.start_soon(my_very_long_task())
+async with Scope() as n:
+    await n.spawn(my_very_long_task())
 ```
 
 ## Status
@@ -196,7 +197,7 @@ until we figure out what to add.
 
 - write more examples
 - extend the API:
-  - new `Nursery` APIs
+  - new `Scope` APIs
   - new kinds of tasks, for example executors (although we have no way to stop 
   a thread executor...)
   - After discovering a very similar project called [Ayo](https://github.com/Tygs/ayo), see what 

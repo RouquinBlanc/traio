@@ -1,5 +1,5 @@
 """
-Test the `master` feature of `Nursery.start_soon`
+Test the `master` feature of `Scope.spawn`
 """
 
 import asyncio
@@ -8,7 +8,7 @@ import time
 import pytest
 
 from tests import run10
-from traio import Nursery
+from traio import Scope
 
 
 @pytest.mark.asyncio
@@ -19,9 +19,9 @@ async def test_master():
 
     before = time.time()
 
-    async with Nursery() as n:
-        n.start_soon(run10())
-        n.start_soon(master(), master=True)
+    async with Scope() as n:
+        n.spawn(run10())
+        n.spawn(master(), master=True)
 
     after = time.time()
 
@@ -36,9 +36,9 @@ async def test_master_raises():
         raise ValueError('boom')
 
     with pytest.raises(ValueError):
-        async with Nursery() as n:
-            n.start_soon(run10())
-            n.start_soon(raiser(), master=True)
+        async with Scope() as n:
+            n.spawn(run10())
+            n.spawn(raiser(), master=True)
 
 
 @pytest.mark.asyncio
@@ -47,10 +47,10 @@ async def test_cancel_master():
 
     before = time.time()
 
-    async with Nursery(timeout=0.5) as n:
-        n.start_soon(run10())
+    async with Scope(timeout=0.5) as n:
+        n.spawn(run10())
 
-        t = n.start_soon(run10(), master=True)
+        t = n.spawn(run10(), master=True)
 
         await asyncio.sleep(0.05)
         t.cancel()

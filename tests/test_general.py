@@ -6,42 +6,42 @@ import pytest
 from mock import Mock
 from tests import run10
 
-from traio import Nursery
+from traio import Scope
 
 
 def test_logging():
-    """Logging Nursery"""
-    Nursery.set_debug(True)
-    nursery = Nursery()
-    assert nursery.logger.level == logging.DEBUG
-    Nursery.set_debug(False)
-    assert nursery.logger.level >= logging.DEBUG
+    """Logging Scope"""
+    Scope.set_debug(True)
+    scope = Scope()
+    assert scope.logger.level == logging.DEBUG
+    Scope.set_debug(False)
+    assert scope.logger.level >= logging.DEBUG
 
 
 @pytest.mark.asyncio
 async def test_empty():
-    """Empty Nursery"""
-    async with Nursery():
+    """Empty Scope"""
+    async with Scope():
         pass
 
 
 @pytest.mark.asyncio
 async def test_empty_timeout():
-    """Empty Nursery"""
-    async with Nursery(timeout=0.1):
+    """Empty Scope"""
+    async with Scope(timeout=0.1):
         pass
 
 
 @pytest.mark.asyncio
 async def test_simple():
-    """Simple nursery with one execution"""
+    """Simple scope with one execution"""
     async def run(m):
         await asyncio.sleep(0.01)
         m()
 
     mock = Mock()
 
-    async with Nursery() as n:
+    async with Scope() as n:
         n << run(mock)
 
     assert mock.called
@@ -49,10 +49,10 @@ async def test_simple():
 
 @pytest.mark.asyncio
 async def test_future():
-    """Simple nursery with a future; should not timeout"""
-    async with Nursery(timeout=0.1) as n:
+    """Simple scope with a future; should not timeout"""
+    async with Scope(timeout=0.1) as n:
         f = asyncio.Future()
-        n.start_soon(f)
+        n.spawn(f)
         f.set_result(None)
 
 
@@ -60,7 +60,7 @@ async def test_future():
 async def test_block_raises():
     """Raise an exception from the block"""
     with pytest.raises(ValueError):
-        async with Nursery():
+        async with Scope():
             raise ValueError('boom')
 
 
@@ -72,14 +72,14 @@ async def test_task_raises():
         raise ValueError('boom')
 
     with pytest.raises(ValueError):
-        async with Nursery() as n:
+        async with Scope() as n:
             n << raiser()
 
 
 @pytest.mark.asyncio
 async def test_task_count():
     """Raise an exception from a task"""
-    async with Nursery() as out:
+    async with Scope() as out:
         for i in range(1, 11):
             out << run10()
             assert len(out.get_tasks()) == i

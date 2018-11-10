@@ -1,5 +1,5 @@
 """
-Various task & nursery cancellation tests
+Various task & scope cancellation tests
 """
 
 import asyncio
@@ -8,7 +8,7 @@ import time
 import pytest
 
 from tests import run10
-from traio import Nursery
+from traio import Scope
 
 
 @pytest.mark.asyncio
@@ -26,8 +26,8 @@ async def test_task_catches_cancel():
     before = time.time()
 
     with pytest.raises(OSError):
-        async with Nursery(timeout=0.1) as n:
-            n.start_soon(nasty(), cancel_timeout=0.5)
+        async with Scope(timeout=0.1) as n:
+            n.spawn(nasty(), cancel_timeout=0.5)
 
     after = time.time()
     assert 0.4 < (after - before) < 1
@@ -37,9 +37,9 @@ async def test_task_catches_cancel():
 async def test_external_cancel():
     """Raise an external cancellation"""
     async def run_me():
-        n = Nursery()
+        n = Scope()
         async with n:
-            n.start_soon(run10())
+            n.spawn(run10())
 
         assert n.cancelled()
 
@@ -66,9 +66,9 @@ async def test_external_cancel_nasty():
             raise ValueError('boom')
 
     async def run_me():
-        n = Nursery()
+        n = Scope()
         async with n:
-            n.start_soon(nasty())
+            n.spawn(nasty())
 
         assert n.cancelled()
 
@@ -88,8 +88,8 @@ async def test_internal_cancel():
     """Test an internal cancellation"""
     before = time.time()
 
-    async with Nursery() as n:
-        n.start_soon(run10())
+    async with Scope() as n:
+        n.spawn(run10())
         await asyncio.sleep(0.2)
         n.cancel()
 
@@ -109,7 +109,7 @@ async def test_cancelling_going_bad():
             raise ValueError('boom')
 
     with pytest.raises(TimeoutError):
-        async with Nursery(timeout=0.5) as n:
-            n.start_soon(nasty())
+        async with Scope(timeout=0.5) as n:
+            n.spawn(nasty())
 
     await asyncio.sleep(0.1)

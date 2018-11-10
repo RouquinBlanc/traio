@@ -27,7 +27,7 @@ class NamedFuture(asyncio.Future):
         return self._repr
 
 
-class AsyncTask(NamedFuture):
+class TaskWrapper(NamedFuture):
     """
     Task convenient object used by nursery
     """
