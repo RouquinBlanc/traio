@@ -15,7 +15,7 @@
 
 from .nursery import Nursery
 
-__version__ = "0.3-beta"
+__version__ = "0.3.1"
 
 __all__ = [
     'Nursery'
