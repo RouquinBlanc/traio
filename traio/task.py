@@ -61,12 +61,12 @@ class TaskWrapper(NamedFuture):
 
     # --- API ---
 
-    def __await__(self, *args, **kwargs):
+    def __await__(self):
         """
         Awaiting explicitly a task (never done internally),
         """
         self.bubble = False
-        return super().__await__(*args, **kwargs)
+        return super().__await__()
 
     def cancel(self):
         """Perform cancellation on internal future"""
