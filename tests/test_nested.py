@@ -30,7 +30,7 @@ async def test_nested_unrelated():
                 inner.spawn(run10())
 
     after = time.time()
-    assert (after - before) > 0.4, 'for now...'
+    assert (after - before) < 0.4, 'for now...'
 
 
 @pytest.mark.asyncio
