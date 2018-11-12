@@ -199,39 +199,19 @@ async def main():
         main_scope << do_something_else()
 ```
 
-### Caveat
-
-Remember that **we do not modify the way asyncio works**. Asyncio is still
-in charge of scheduling all tasks. In that aspect, if you block you scope
-awaiting for something *not* handled by the scope, the timeouts and cancellation
-won't apply until your current task is done. Instead, try to wrap your task in a
-call to `Scope.spawn`.
-
-So instead of this:
-```python
-async with Scope() as n:
-    await my_very_long_task()
-```
-try to do this:
-```python
-async with Scope() as n:
-    await n.spawn(my_very_long_task())
-```
-
 ## Status
 
-This is still alpha; the principle was validated and the various tests ensure
-a pretty good coverage as well as examples. But the API may vary a bit for a while
-until we figure out what to add.
+This is beta. We are not going to change the API (much) anymore.
 
 ## TODOS
 
 - write more examples
 - extend the API:
-  - new `Scope` APIs
-  - new kinds of tasks, for example executors (although we have no way to stop 
+  - new kinds of tasks to investigate, for example executors (although we have no way to stop 
   a thread executor...)
-  - After discovering a very similar project called [Ayo](https://github.com/Tygs/ayo), see what 
-  good features can be integrated (love the `<<` operator!)
 - play more with the real Trio and get a better feeling of it
 - get some user feedback if possible!
+
+## Similar projects
+
+You may like as well [Ayo](https://github.com/Tygs/ayo), discovered in parallel of writting this lib!
