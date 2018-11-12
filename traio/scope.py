@@ -8,6 +8,7 @@ Except:
 
 import asyncio
 import logging
+import sys
 import time
 from typing import Awaitable, Optional
 from aiocontextvars import ContextVar
@@ -18,6 +19,16 @@ from traio.task import NamedFuture, TaskWrapper
 SCOPE = ContextVar('traio_scope')
 DEFAULT_LOGGER = logging.getLogger('traio')
 DEFAULT_LOGGER.setLevel(logging.CRITICAL)
+PY37 = sys.version_info >= (3, 7)
+
+
+def current_task(loop=None):
+    """
+    Return current task. Wraps difference between before/after py37
+    """
+    if PY37:
+        return asyncio.current_task(loop)
+    return asyncio.Task.current_task(loop)
 
 
 class Scope(NamedFuture):
@@ -52,6 +63,7 @@ class Scope(NamedFuture):
         - the scope to be marked as done (join() will return)
     """
 
+    # pylint: disable=too-many-instance-attributes
     def __init__(self, *, logger=None, timeout=0, name=None):
         """
         Create a scope.
@@ -72,11 +84,13 @@ class Scope(NamedFuture):
 
         self._joining = False
         self._token = None
+        self._task = None
         self.logger.debug('creating %s', self)
 
     async def __aenter__(self):
         assert self._token is None, 'can only enter scope context once!'
         self._token = SCOPE.set(self)
+        self._task = current_task()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -100,6 +114,10 @@ class Scope(NamedFuture):
     async def _timeout_handler(self):
         """When timeout is reached, scope is cancelled."""
         await asyncio.sleep(self.timeout)
+
+        if not self._joining and self._task:
+            self._task.cancel()
+
         self.cancel(TimeoutError())
 
     def _on_task_done(self, task: TaskWrapper):
