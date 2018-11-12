@@ -13,11 +13,8 @@ from traio import Scope
 @pytest.mark.asyncio
 async def test_nested_unrelated():
     """
-    Two nested Nurseries, but completely unrelated.
-    Remember that we cannot do magic (yet).
-    As long as the inner code is blocking and
-    not related to the surrounding Scope,
-    The outer timeout will be stuck!
+    Two nested Nurseries, outer will timeout before inner.
+    This should be handled properly now.
     """
     before = time.time()
 

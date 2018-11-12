@@ -94,13 +94,19 @@ class Scope(NamedFuture):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self._task = None
         if exc_type:
             # An exception occurred: cleanup
             self.cancel(exc_val)
+
+        silent = self.done() and self.exception() is None
         try:
             await self.join()
         finally:
             SCOPE.reset(self._token)
+            if silent:
+                # When we entered here done with no exception, just swallow any error
+                return True  # pylint: disable=lost-exception
 
     def __enter__(self):
         """Protect against calling as regular context manager"""
@@ -114,9 +120,6 @@ class Scope(NamedFuture):
     async def _timeout_handler(self):
         """When timeout is reached, scope is cancelled."""
         await asyncio.sleep(self.timeout)
-
-        if not self._joining and self._task:
-            self._task.cancel()
 
         self.cancel(TimeoutError())
 
@@ -233,6 +236,9 @@ class Scope(NamedFuture):
             else:
                 self.logger.debug('cancelling %s', self)
                 self.set_result(None)
+
+            if self._task:
+                self._task.cancel()
 
     async def join(self, forever=False):
         """
