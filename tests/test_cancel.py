@@ -113,3 +113,26 @@ async def test_cancelling_going_bad():
             n.spawn(nasty())
 
     await asyncio.sleep(0.1)
+
+
+@pytest.mark.asyncio
+async def test_cancel_not_joined_yet():
+    """
+    When we cancel the nursery, it hasn't been joined yet.
+    This should cancel it anyway.
+    """
+    async def cleaner():
+        await asyncio.sleep(0.2)
+        Scope.get_current().cancel()
+        await asyncio.sleep(10)
+
+    before = time.time()
+
+    async with Scope() as s:
+        s << cleaner()
+
+        await asyncio.sleep(1)
+        raise Exception('never called')
+
+    after = time.time()
+    assert (after - before) < 0.4, 'for now...'
