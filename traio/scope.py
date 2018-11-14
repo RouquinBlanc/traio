@@ -15,7 +15,6 @@ from aiocontextvars import ContextVar
 
 from traio.task import NamedFuture, TaskWrapper
 
-
 SCOPE = ContextVar('traio_scope')
 DEFAULT_LOGGER = logging.getLogger('traio')
 DEFAULT_LOGGER.setLevel(logging.CRITICAL)
@@ -76,8 +75,8 @@ class Scope(NamedFuture):
 
         # Internal state variables
         self._pending_tasks = []
-        self._joining = False
-        self._cancel = asyncio.Future()
+        self._auto_done = False
+        self._done = False
         self._token = None
         self._task = None
         self._timeout_task = None
@@ -103,13 +102,18 @@ class Scope(NamedFuture):
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         self._task = None
+
         if exc_type:
             # An exception occurred: cleanup
             self.cancel(exc_val)
 
-        silent = self._cancel.done() and self._cancel.exception() is None
+        # If we are done entering here, remember it
+        silent = self._done is True
+
+        # From here, we are going to exit on last task
+        self.finalize()
         try:
-            await self.join()
+            await self
         finally:
             SCOPE.reset(self._token)
             if silent:
@@ -150,20 +154,28 @@ class Scope(NamedFuture):
             if task in self._pending_tasks:
                 self._pending_tasks.remove(task)
 
-            if not self._pending_tasks and not self._cancel.done() and self._joining:
-                # No more tasks scheduled: cancel the
-                self.cancel()
+            # That may be the last standing task
+            self._may_be_done()
 
-    async def _cancel_proper(self, fut, timeout=1):
+    def _may_be_done(self):
+        """
+        Try to see if we may be done with this scope
+        :return: True if we are all set
+        """
+        if not self._pending_tasks and self._done is False and self._auto_done:
+            # No more tasks scheduled: cancel the scope
+            self.cancel()
+
+    async def _cancel_proper(self, task, timeout=1):
         """
         Cancel a task and wait for it to finish for `timeout` seconds.
         If it fails to terminate, raise an OSError; otherwise, swallow.
         """
-        fut.cancel()
+        task.cancel()
         try:
             # Since python 3.7, after timeout the wait_for API
             # will try to cancel and await the future... which may block forever!
-            await asyncio.wait_for(asyncio.shield(fut), timeout)
+            await asyncio.wait_for(asyncio.shield(task), timeout)
         except asyncio.CancelledError:
             # Perfect.
             pass
@@ -175,7 +187,36 @@ class Scope(NamedFuture):
             # Too late for raising... and we need to move on cleaning other tasks!
             self.logger.warning(
                 '%s failed to cancel with exception: %s %s',
-                fut, ex.__class__.__name__, ex)
+                task, ex.__class__.__name__, ex)
+
+    def _resolve(self, _):
+        """
+        Resolve the scope: set its result
+        :param _:
+        :return:
+        """
+        assert self._done
+        if self._done is True:
+            self.set_result(None)
+        else:
+            self.set_exception(self._done)
+
+    async def _join(self):
+        """
+        Await for all tasks to be finished, or an error to go through.
+
+        Call this last after spawning all your tasks to await for all of
+        them and perform cleanup properly. This only needs to be called
+        if the scope is *not* used as a context manager: The __aexit__
+        function will call this automatically.
+        """
+        # We may still have pending tasks if the Scope is cancelled
+        for task in self._pending_tasks:
+            if not task.done():
+                await self._cancel_proper(task, timeout=task.cancel_timeout)
+
+        if self._timeout_task:
+            await self._cancel_proper(self._timeout_task)
 
     # --- Public API ---
 
@@ -230,6 +271,7 @@ class Scope(NamedFuture):
     @timeout.setter
     def timeout(self, value: float):
         """Reset timeout to given value."""
+        assert not self._done, 'cannot set timeout on dead/dying scope'
         self._timeout = value
         if self._timeout_task:
             self._timeout_task.cancel()
@@ -257,67 +299,18 @@ class Scope(NamedFuture):
                     'cancelling active %s from %s', task, self)
                 task.cancel()
 
-        if not self._cancel.done():
-                # A join is pending
-            if exception:
-                self.logger.warning(
-                    'cancelling %s with %s: %s',
-                    self, exception.__class__.__name__, exception
-                )
-                self._cancel.set_exception(exception)
-            else:
-                self.logger.debug('cancelling %s', self)
-                self._cancel.set_result(None)
+        # We only effectively cancel once
+        if not self._done:
+            self._done = exception if exception else True
+
+            canceller = asyncio.ensure_future(self._join())  # type: asyncio.Future
+            canceller.add_done_callback(self._resolve)
 
             if self._task:
                 # Tricky scenario: we are using the scope as a context manager
                 # and still didn't exit from the code block: cancel current task
                 # to force the code to exit.
                 self._task.cancel()
-
-    async def join(self, forever=False):
-        """
-        Await for all tasks to be finished, or an error to go through.
-
-        Call this last after spawning all your tasks to await for all of
-        them and perform cleanup properly. This only needs to be called
-        if the scope is *not* used as a context manager: The __aexit__
-        function will call this automatically.
-        """
-        assert not self._joining, 'can only join a running scope'
-
-        if not forever:
-            self._joining = True
-
-            if not forever and not self._pending_tasks and not self._cancel.done():
-                # There is no task left.
-                self._cancel.set_result(None)
-
-        try:
-            await self._cancel
-        except asyncio.CancelledError:
-            self.logger.debug('%s cancelled from outside!', self)
-            # Mark as cancelled and raise
-            super().cancel()
-            raise
-        finally:
-            # We may still have pending tasks if the Scope is cancelled
-            for task in self._pending_tasks:
-                if not task.done():
-                    await self._cancel_proper(task, timeout=task.cancel_timeout)
-
-            if self._timeout_task:
-                await self._cancel_proper(self._timeout_task)
-
-            # Only now we can set the scope as done
-            assert self._cancel.done()
-            exception = self._cancel.exception()
-            if exception:
-                self.set_exception(exception)
-            else:
-                self.set_result(None)
-
-            await self
 
     def spawn(self, awaitable: Awaitable, *,
               name=None, master=False, bubble=True, cancel_timeout=1):
@@ -351,6 +344,8 @@ class Scope(NamedFuture):
             (if the task wants to catch it and do cleanup)
         :returns: AsyncTask
         """
+        assert not self._done, 'cannot spawn tasks on dead or dying scope'
+
         if asyncio.iscoroutine(awaitable) or asyncio.isfuture(awaitable):
             # This is already an awaitable object
             fut = awaitable
@@ -392,7 +387,16 @@ class Scope(NamedFuture):
         :param timeout: None by default
         :returns: Scope
         """
-        assert not self.done(), 'cannot fork a dead scope'
+        assert not self._done, 'cannot fork a dead or dying scope'
         scope = Scope(logger=self.logger, timeout=timeout, name=name)
         self.spawn(scope, bubble=False, name=str(scope))
         return scope
+
+    def finalize(self):
+        """
+        Mark the scope as finalized:
+        from now one, it will be cancelled automatically
+        upon last task done.
+        """
+        self._auto_done = True
+        self._may_be_done()

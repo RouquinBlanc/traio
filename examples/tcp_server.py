@@ -30,7 +30,7 @@ class Server:
         self.server = await asyncio.start_server(self.client_connected, '0.0.0.0', 5000)
 
         # Join the scope forever
-        await self.scope.join(forever=True)
+        await self.scope
 
     async def client_connected(self, reader, writer):
         peer = writer.get_extra_info('peername')

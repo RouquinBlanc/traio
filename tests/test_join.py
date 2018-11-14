@@ -51,8 +51,9 @@ async def test_join_task_cancelled():
             await t
 
 
+@pytest.mark.parametrize('wait', [True, False])
 @pytest.mark.asyncio
-async def test_join_task_cancelled_no_env():
+async def test_join_task_cancelled_no_env(wait):
     """Test joining a task, but cancelled"""
     n = Scope(timeout=1)
 
@@ -62,7 +63,11 @@ async def test_join_task_cancelled_no_env():
     with pytest.raises(asyncio.CancelledError):
         await t
 
-    await n.join()
+    n.finalize()
+    if wait:
+        await asyncio.wait_for(n, 2)
+    else:
+        await n
 
 
 @pytest.mark.asyncio
@@ -92,7 +97,8 @@ async def test_join_task_raises_no_env():
         # Catching the error here prevents bubbling
         await t
 
-    await n.join()
+    n.finalize()
+    await n
 
     after = time.time()
     assert (after - before) < 0.3
@@ -135,7 +141,8 @@ async def test_join_then_new_no_env():
     # will 0.2 seconds
     n.spawn(trivial())
 
-    await n.join()
+    n.finalize()
+    await n
 
     after = time.time()
     assert (after - before) < 0.5
@@ -151,7 +158,7 @@ async def test_join_forever():
 
     with pytest.raises(TimeoutError):
         # We join forever: this will stay alive even if the trivial task is done!
-        await n.join(forever=True)
+        await n
 
 
 @pytest.mark.asyncio
@@ -177,7 +184,7 @@ async def test_join_cleanup():
     await asyncio.sleep(0.1)
 
     scope.cancel()
-    await scope.join()
+    await scope
 
     assert done
 

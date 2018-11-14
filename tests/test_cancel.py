@@ -115,6 +115,23 @@ async def test_cancelling_going_bad():
     await asyncio.sleep(0.1)
 
 
+@pytest.mark.parametrize('wait', [True, False])
+@pytest.mark.asyncio
+async def test_join_cancel(wait):
+    """
+
+    """
+    parent = Scope()
+
+    await asyncio.sleep(0.1)
+    parent.cancel()
+
+    if wait:
+        await parent
+    else:
+        await asyncio.wait_for(parent, 1)
+
+
 @pytest.mark.asyncio
 async def test_cancel_not_joined_yet():
     """

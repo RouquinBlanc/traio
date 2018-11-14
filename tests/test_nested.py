@@ -57,7 +57,7 @@ async def test_nested_fork_timeout_parent_no_env():
         async with Scope(timeout=0.1) as parent:
             inner = parent.fork()
             inner.spawn(run10())
-            await inner.join()
+            await inner
 
     after = time.time()
     assert (after - before) < 0.2
@@ -151,15 +151,55 @@ async def test_nested_fork_raises_catch():
 
             with pytest.raises(ValueError):
                 # This should prevent bubbling
-                await inner.join()
+                await inner
 
     after = time.time()
     assert (after - before) > 0.4
 
 
+@pytest.mark.parametrize('wait', [True, False])
+@pytest.mark.asyncio
+async def test_nested_cancel_join(wait):
+    """
+    """
+    parent = Scope()
+
+    child = parent.fork()
+    child << run10()
+
+    await asyncio.sleep(0.1)
+
+    child.cancel()
+    parent.cancel()
+
+    if wait:
+        await parent
+    else:
+        await asyncio.wait_for(parent, 1)
+
+
+@pytest.mark.asyncio
+async def test_nested_cancel_wait():
+    """
+    """
+    parent = Scope()
+
+    child = parent.fork()
+    child << run10()
+
+    await asyncio.sleep(0.1)
+
+    child.cancel()
+    parent.cancel()
+
+    await asyncio.wait_for(asyncio.shield(parent), 1)
+
+
 @pytest.mark.asyncio
 async def test_context():
-
+    """
+    Check Scope.get_current() in different situations
+    """
     assert Scope.get_current() is None
 
     # Create a first Scope
