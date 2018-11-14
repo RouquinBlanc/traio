@@ -74,20 +74,28 @@ class Scope(NamedFuture):
         """
         super().__init__('Scope', name)
 
-        self.logger = logger or DEFAULT_LOGGER
-
+        # Internal state variables
         self._pending_tasks = []
-
-        assert timeout >= 0, 'timeout must me a positive number'
-        self._timeout_task = None
-        self.timeout = self._timeout = timeout
-
         self._joining = False
+        self._cancel = asyncio.Future()
         self._token = None
         self._task = None
+        self._timeout_task = None
+
+        assert timeout >= 0, 'timeout must me a positive number'
+        self.timeout = self._timeout = timeout
+
+        # Using default `traio` logger if none provided
+        self.logger = logger or DEFAULT_LOGGER
         self.logger.debug('creating %s', self)
 
     async def __aenter__(self):
+        """
+        While entering a scope, we need to do 3 things:
+            - Setting the current scope for the code in the context block as self
+            - Storing the contextvars token for resetting context on exit
+            - Storing the current active task in case of cancellation before exit
+        """
         assert self._token is None, 'can only enter scope context once!'
         self._token = SCOPE.set(self)
         self._task = current_task()
@@ -99,7 +107,7 @@ class Scope(NamedFuture):
             # An exception occurred: cleanup
             self.cancel(exc_val)
 
-        silent = self.done() and self.exception() is None
+        silent = self._cancel.done() and self._cancel.exception() is None
         try:
             await self.join()
         finally:
@@ -142,9 +150,32 @@ class Scope(NamedFuture):
             if task in self._pending_tasks:
                 self._pending_tasks.remove(task)
 
-            if not self._pending_tasks and not self.done() and self._joining:
+            if not self._pending_tasks and not self._cancel.done() and self._joining:
                 # No more tasks scheduled: cancel the
                 self.cancel()
+
+    async def _cancel_proper(self, fut, timeout=1):
+        """
+        Cancel a task and wait for it to finish for `timeout` seconds.
+        If it fails to terminate, raise an OSError; otherwise, swallow.
+        """
+        fut.cancel()
+        try:
+            # Since python 3.7, after timeout the wait_for API
+            # will try to cancel and await the future... which may block forever!
+            await asyncio.wait_for(asyncio.shield(fut), timeout)
+        except asyncio.CancelledError:
+            # Perfect.
+            pass
+        except asyncio.TimeoutError as ex:
+            self.logger.error('%s could not be cancelled in time', self)
+            raise OSError(
+                'Could not cancel {}!!! Check your code!'.format(self)) from ex
+        except Exception as ex:  # pylint: disable=broad-except
+            # Too late for raising... and we need to move on cleaning other tasks!
+            self.logger.warning(
+                '%s failed to cancel with exception: %s %s',
+                fut, ex.__class__.__name__, ex)
 
     # --- Public API ---
 
@@ -226,18 +257,22 @@ class Scope(NamedFuture):
                     'cancelling active %s from %s', task, self)
                 task.cancel()
 
-        if not self.done():
+        if not self._cancel.done():
+                # A join is pending
             if exception:
                 self.logger.warning(
                     'cancelling %s with %s: %s',
                     self, exception.__class__.__name__, exception
                 )
-                self.set_exception(exception)
+                self._cancel.set_exception(exception)
             else:
                 self.logger.debug('cancelling %s', self)
-                self.set_result(None)
+                self._cancel.set_result(None)
 
             if self._task:
+                # Tricky scenario: we are using the scope as a context manager
+                # and still didn't exit from the code block: cancel current task
+                # to force the code to exit.
                 self._task.cancel()
 
     async def join(self, forever=False):
@@ -254,45 +289,35 @@ class Scope(NamedFuture):
         if not forever:
             self._joining = True
 
-            if not forever and not self._pending_tasks and not self.done():
+            if not forever and not self._pending_tasks and not self._cancel.done():
                 # There is no task left.
-                self.set_result(None)
+                self._cancel.set_result(None)
 
         try:
-            await self
+            await self._cancel
         except asyncio.CancelledError:
             self.logger.debug('%s cancelled from outside!', self)
+            # Mark as cancelled and raise
+            super().cancel()
             raise
         finally:
             # We may still have pending tasks if the Scope is cancelled
             for task in self._pending_tasks:
                 if not task.done():
-                    task.cancel()
-                    try:
-                        await asyncio.wait_for(
-                            # Since python 3.7, after timeout the wait_for API
-                            # will try to cancel and await the future... which may block forever!
-                            asyncio.shield(task),
-                            task.cancel_timeout
-                        )
-                    except asyncio.CancelledError:
-                        pass
-                    except asyncio.TimeoutError as ex:
-                        self.logger.error('%s could not be cancelled in time', self)
-                        raise OSError(
-                            'Could not cancel {}!!! Check your code!'.format(self)) from ex
-                    except Exception as ex:  # pylint: disable=broad-except
-                        # Too late for raising... and we need to move on cleaning other tasks!
-                        self.logger.warning(
-                            '%s failed to cancel with exception: %s %s',
-                            task, ex.__class__.__name__, ex)
+                    await self._cancel_proper(task, timeout=task.cancel_timeout)
 
             if self._timeout_task:
-                self._timeout_task.cancel()
-                try:
-                    await self._timeout_task
-                except asyncio.CancelledError:
-                    pass
+                await self._cancel_proper(self._timeout_task)
+
+            # Only now we can set the scope as done
+            assert self._cancel.done()
+            exception = self._cancel.exception()
+            if exception:
+                self.set_exception(exception)
+            else:
+                self.set_result(None)
+
+            await self
 
     def spawn(self, awaitable: Awaitable, *,
               name=None, master=False, bubble=True, cancel_timeout=1):

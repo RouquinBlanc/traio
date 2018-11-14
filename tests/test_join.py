@@ -152,3 +152,60 @@ async def test_join_forever():
     with pytest.raises(TimeoutError):
         # We join forever: this will stay alive even if the trivial task is done!
         await n.join(forever=True)
+
+
+@pytest.mark.asyncio
+async def test_join_cleanup():
+    """
+    Ensure that when the scope is done,
+    all tasks have been cleaned properly.
+    """
+    done = False
+
+    async def job():
+        nonlocal done
+        try:
+            await asyncio.sleep(10)
+        finally:
+            done = True
+
+    scope = Scope()
+
+    # will run 0.2 seconds
+    scope << job()
+
+    await asyncio.sleep(0.1)
+
+    scope.cancel()
+    await scope.join()
+
+    assert done
+
+
+@pytest.mark.asyncio
+async def test_join_cleanup_external():
+    """
+    Ensure that when the scope is done,
+    all tasks have been cleaned properly.
+    """
+    done = False
+
+    async def job():
+        nonlocal done
+        try:
+            await asyncio.sleep(10)
+        finally:
+            done = True
+
+    async def cleaner(scope):
+        await asyncio.sleep(0.2)
+        scope.cancel()
+
+    scope = Scope()
+    c = asyncio.ensure_future(cleaner(scope))
+
+    async with scope:
+        scope << job()
+
+    await c
+    assert done
