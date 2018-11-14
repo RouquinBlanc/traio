@@ -392,6 +392,7 @@ class Scope(NamedFuture):
         :param timeout: None by default
         :returns: Scope
         """
+        assert not self.done(), 'cannot fork a dead scope'
         scope = Scope(logger=self.logger, timeout=timeout, name=name)
         self.spawn(scope, bubble=False, name=str(scope))
         return scope

@@ -85,6 +85,20 @@ async def test_nested_fork_timeout_inner():
 
 
 @pytest.mark.asyncio
+async def test_fork_dead():
+    """
+    Try to fork a dead scope.
+    """
+    scope = Scope()
+
+    async with scope:
+        pass
+
+    with pytest.raises(AssertionError):
+        _ = scope.fork()
+
+
+@pytest.mark.asyncio
 async def test_nested_fork_timeout_sibling():
     """
     Two nested Nurseries, but completely unrelated.
