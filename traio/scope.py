@@ -128,7 +128,7 @@ class Scope(NamedFuture):
     async def _timeout_handler(self):
         """When timeout is reached, scope is cancelled."""
         await asyncio.sleep(self.timeout)
-
+        self.logger.info('timeout on scope %s', self)
         self.cancel(TimeoutError())
 
     def _on_task_done(self, task: TaskWrapper):
@@ -138,7 +138,7 @@ class Scope(NamedFuture):
         except asyncio.CancelledError:
             self.logger.debug('%s got cancelled', task)
         except Exception as ex:  # pylint: disable=broad-except
-            self.logger.debug('%s got an exception: %s', task, ex)
+            self.logger.debug('%s got an exception: [%s] %s', task, ex.__class__.__name__, ex)
             if task.bubble:
                 self.cancel(ex)
         else:
