@@ -209,3 +209,41 @@ async def test_join_cleanup_external():
 
     await c
     assert done
+
+
+@pytest.mark.asyncio
+async def test_join_cleanup_external2():
+    """
+    Ensure that when the scope is done,
+    all tasks have been cleaned properly.
+    """
+    done = False
+    scope = Scope()
+
+    async def job():
+        nonlocal done
+        try:
+            await asyncio.sleep(10)
+        finally:
+            done = True
+
+    async def runner(scope):
+        async with scope:
+            scope << job()
+
+    task = asyncio.ensure_future(runner(scope))
+
+    # Wait a bit so that everyone is started and blocked
+    await asyncio.sleep(0.2)
+
+    # Now: scope should be joining, pending on job
+    assert not done
+
+    # Cancel the scope and await the scope
+    scope.cancel()
+    await scope
+
+    # As soon as scope is done, we should have cleaned up job
+    assert done
+
+    await task
