@@ -136,3 +136,99 @@ async def test_cancel_not_joined_yet():
 
     after = time.time()
     assert (after - before) < 0.4, 'for now...'
+
+
+@pytest.mark.asyncio
+async def test_cancel_double():
+    """
+    Cancelled externally, twice
+    """
+    async def cleaner(scope):
+        await asyncio.sleep(0.2)
+        scope.cancel()
+        # Should we raise something in case of double close?
+        scope.cancel()
+
+    scope = Scope()
+
+    task = asyncio.ensure_future(cleaner(scope))
+
+    async with scope:
+        scope << run10()
+
+    await task
+    assert scope.done() and scope.exception() is None
+
+
+
+@pytest.mark.asyncio
+async def test_cancel_double_exception():
+    """
+    Cancelled externally, twice, with exception
+    """
+    async def cleaner(scope):
+        await asyncio.sleep(0.2)
+        scope.cancel(ValueError('boom'))
+        # Should we raise something in case of double close?
+        scope.cancel(ValueError('boom'))
+
+    scope = Scope()
+
+    task = asyncio.ensure_future(cleaner(scope))
+
+    with pytest.raises(ValueError):
+        async with scope:
+            scope << run10()
+
+    await task
+    assert scope.done() and isinstance(scope.exception(), ValueError)
+
+
+@pytest.mark.asyncio
+async def test_cancel_double_internal():
+    """
+    Cancelled internally, twice
+    """
+    async def cleaner():
+        await asyncio.sleep(0.2)
+        Scope.get_current().cancel()
+        # Should we raise something in case of double close?
+        Scope.get_current().cancel()
+
+    async with Scope() as scope:
+        scope << cleaner()
+
+
+@pytest.mark.asyncio
+async def test_cancel_double_internal_exception():
+    """
+    Cancelled internally, twice, with exception
+    """
+    async def cleaner():
+        await asyncio.sleep(0.2)
+        Scope.get_current().cancel(ValueError('boom'))
+        # Should we raise something in case of double close?
+        Scope.get_current().cancel(ValueError('boom'))
+
+    with pytest.raises(ValueError):
+        async with Scope() as scope:
+            scope << cleaner()
+
+
+@pytest.mark.asyncio
+async def test_cancel_finally_cancel():
+    """
+    Cancelled internally, twice
+    """
+    async def cleaner():
+        await asyncio.sleep(0.2)
+        raise ValueError('boom')
+
+    scope = Scope()
+
+    with pytest.raises(ValueError):
+        try:
+            async with scope:
+                scope << cleaner()
+        finally:
+            scope.cancel()
