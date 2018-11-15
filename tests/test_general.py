@@ -9,6 +9,12 @@ from tests import run10
 from traio import Scope
 
 
+def test_version():
+    """Just ensure we have a version string"""
+    from traio.__version__ import __version__
+    assert isinstance(__version__, str)
+
+
 def test_logging():
     """Logging Scope"""
     Scope.set_debug(True)
