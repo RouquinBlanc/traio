@@ -72,8 +72,15 @@ async def main():
     for i in range(10):
         scope << fetch_url(i)
         
-    await scope.join()
+    scope.finalize()
+    await scope
 ```
+
+Awaiting a scope will block until the scope is fully complete: all active tasks
+have finished or the scope was cancelled. But unless `scope.finalize()` is called,
+a scope will note stop on the last task being complete, only on cancellation.
+
+The `finalize` method is called automatically when used as a context manager.
 
 ### Names and logger
 
