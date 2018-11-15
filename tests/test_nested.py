@@ -207,7 +207,7 @@ async def test_context():
 
     n2 = Scope()
 
-    Scope.set_current(n2)
+    Scope._set_current(n2)
     assert Scope.get_current() == n2
 
     async def sub():
@@ -236,5 +236,5 @@ async def test_context():
 
     assert Scope.get_current() == n2
 
-    Scope.set_current(None)
+    Scope._set_current(None)
     assert Scope.get_current() is None

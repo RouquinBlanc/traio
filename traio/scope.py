@@ -218,6 +218,14 @@ class Scope(NamedFuture):
         if self._timeout_task:
             await self._cancel_proper(self._timeout_task)
 
+    @staticmethod
+    def _set_current(scope: Optional['Scope']):
+        """
+        Change current active scope. Do not mess to much with this!
+        :param scope: Scope or None
+        """
+        return SCOPE.set(scope)
+
     # --- Public API ---
 
     @staticmethod
@@ -231,14 +239,6 @@ class Scope(NamedFuture):
         :returns:
         """
         return SCOPE.get(None)
-
-    @staticmethod
-    def set_current(scope: Optional['Scope']):
-        """
-        Change current active scope. Do not mess to much with this!
-        :param scope: Scope or None
-        """
-        return SCOPE.set(scope)
 
     @classmethod
     def set_debug(cls, enabled):
