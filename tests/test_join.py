@@ -254,3 +254,79 @@ async def test_join_cleanup_external2():
     assert done
 
     await task
+
+
+@pytest.mark.asyncio
+async def test_join_not_waited_alone():
+    """
+    Ensure that when the scope is done,
+    all tasks not awaited are cancelled without waiting
+    """
+    before = time.time()
+
+    async with Scope() as scope:
+        scope.spawn(run10(), awaited=False)
+
+    after = time.time()
+    assert (after - before) < 0.1
+
+
+@pytest.mark.asyncio
+async def test_join_not_waited_with_task():
+    """
+    Ensure that when the scope is done,
+    all tasks not awaited are cancelled without waiting
+    """
+    before = time.time()
+
+    async with Scope() as scope:
+        scope.spawn(run10(), awaited=False)
+        scope << asyncio.sleep(0.2)
+
+    after = time.time()
+    assert 0.1 < (after - before) < 0.3
+
+
+@pytest.mark.asyncio
+async def test_join_not_waited_with_timeout():
+    """
+    Ensure that when the scope is done,
+    all tasks not awaited are cancelled without waiting
+    """
+    before = time.time()
+
+    with pytest.raises(TimeoutError):
+        async with Scope(timeout=0.2) as scope:
+            scope.spawn(run10(), awaited=False)
+            scope << run10()
+
+    after = time.time()
+    assert 0.1 < (after - before) < 0.3
+
+
+@pytest.mark.asyncio
+async def test_join_not_waited_but_clean():
+    """
+    Ensure that when the scope is done,
+    all tasks not awaited are cancelled without waiting.
+    But also check that tasks are properly finalised (cancelled and awaited)
+    """
+    before = time.time()
+    done = False
+
+    async def background():
+        nonlocal done
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            done = True
+
+    with pytest.raises(TimeoutError):
+        async with Scope(timeout=0.2) as scope:
+            scope.spawn(background(), awaited=False)
+            scope << asyncio.sleep(0.2)
+
+    after = time.time()
+    assert 0.1 < (after - before) < 0.3
+    assert done is True

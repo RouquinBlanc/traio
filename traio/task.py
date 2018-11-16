@@ -33,7 +33,7 @@ class TaskWrapper(NamedFuture):
     """
 
     def __init__(self, awaitable: Awaitable, *,
-                 cancel_timeout=1, bubble=True, master=False, name=None):
+                 cancel_timeout=1, bubble=True, master=False, awaited=True, name=None):
         """
         Create a Task to be executed
         :param awaitable: awaitable we are wrapping
@@ -46,6 +46,7 @@ class TaskWrapper(NamedFuture):
         self.cancel_timeout = cancel_timeout
         self.bubble = bubble
         self.master = master
+        self.awaited = awaited
 
         self.start_time = time.time()
         self.awaitable = asyncio.ensure_future(awaitable)

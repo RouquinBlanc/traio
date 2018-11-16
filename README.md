@@ -152,8 +152,40 @@ async def main():
         n.spawn(trivial(), master=True)
 ```
 
-Note you can combine both flags; If bubble is False and master is True,
-the scope will exit silently when the task is done, even with an exception.
+- A task by default is `awaited`, which means the scope will wait
+for it to finish during finalisation stage, before exiting.
+It is possible to mark some tasks as not `awaited` if you want a task running,
+but not so essential that it should prevent cancellation. 
+Typically, a background job which has no meaning alone.
+
+```python
+import asyncio
+from traio import Scope
+
+async def background():
+    while True:
+        # Do something periodic and sleep
+        await asyncio.sleep(1)
+    
+async def job():
+    # Do the real work
+    await asyncio.sleep(10)
+
+async def main():
+
+    async with Scope() as n:
+        # Spawn a background job
+        n.spawn(background(), awaited=False)
+        
+        # Do what you have to do.
+        n << job()
+        
+    # At this point, job is done and background task was cancelled
+```
+
+Note you can combine all flags; If bubble is False and master is True,
+the scope will exit silently when the task is done, even with an exception,
+for example.
 
 ### Nested Scope
 

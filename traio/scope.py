@@ -162,8 +162,8 @@ class Scope(NamedFuture):
         Try to see if we may be done with this scope
         :return: True if we are all set
         """
-        if not self._pending_tasks and self._done is False and self._auto_done:
-            # No more tasks scheduled: cancel the scope
+        if not self._done and self._auto_done and not any(t.awaited for t in self._pending_tasks):
+            # No more awaited tasks scheduled: cancel the scope
             self.cancel()
 
     async def _cancel_proper(self, task, timeout=1):
@@ -313,7 +313,7 @@ class Scope(NamedFuture):
                 self._task.cancel()
 
     def spawn(self, awaitable: Awaitable, *,
-              name=None, master=False, bubble=True, cancel_timeout=1):
+              name=None, master=False, bubble=True, awaited=True, cancel_timeout=1):
         """
         Start a task on the scope.
 
@@ -330,6 +330,8 @@ class Scope(NamedFuture):
         with the task when done. This is typically useful when you have one main task
         to be performed and other background ones, which have no meaning if the main one
         stops.
+        - A task will be awaited when the scope is in finalisation state. If marked
+        as not awaited, the scope will cancel that task if nothing else is running.
 
         Cancellation timeout represents the time we will wait a cancelled task
         before giving up; a task should not block cancellation at all, except for
@@ -340,6 +342,7 @@ class Scope(NamedFuture):
         :param name: task name (for logging)
         :param master: If a master task is done, scope is cancelled
         :param bubble: errors in the task will cancel scope
+        :param awaited: will await this task when scope is finalized
         :param cancel_timeout: Time we allow for cancellation
             (if the task wants to catch it and do cleanup)
         :returns: AsyncTask
@@ -356,7 +359,7 @@ class Scope(NamedFuture):
         token = SCOPE.set(self)
         task = TaskWrapper(
             fut, cancel_timeout=cancel_timeout,
-            bubble=bubble, master=master, name=name)
+            bubble=bubble, master=master, awaited=awaited, name=name)
         SCOPE.reset(token)
         task.add_done_callback(self._on_task_done)
         self.logger.debug('adding %s to %s', task, self)
