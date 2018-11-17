@@ -8,7 +8,8 @@ to keep an eye on all your task, you also end up always doing the
 same kind of boiler plate, and the code can become easily twisted and
 unreadable.
 
-[Trio](https://github.com/python-trio/trio) is there to make asynchronous programming easy and more "for humans".
+[Trio](https://github.com/python-trio/trio) is there to make asynchronous
+programming easy and more "for humans".
 
 Traio (as kind of Trio on top of Asyncio) let you use asyncio with a little of
 the philosophy of Trio, mostly the Nursery concept (called Scope here).
@@ -84,7 +85,7 @@ The `finalize` method is called automatically when used as a context manager.
 
 ### Names and logger
 
-If you went deep enough in asyncio misteries, you know that tracing code is
+If you went deep enough in asyncio mysteries, you know that tracing code is
 (for now) kind of a nightmare... For that reason, Scope as well as tasks can
 be instantiated with a name. The Scope can also take a logger which will be
 used for tracing most of the calls and task life cycle, mostly with debug level. 
@@ -95,12 +96,13 @@ used for tracing most of the calls and task life cycle, mostly with debug level.
 effects:
 
 - The `bubble` boolean parameter controls task error bubbling. A task will
-bubble by default. This means that an error in the taskwill cause the task 
+bubble by default. This means that an error in the task will cause the task 
 to stop (of course), but the scope will be cancelled as well and raise 
-the given error. This is the desired default behavior.
+the given error. This is the default behavior.
 But it can be useful in some cases not to do that, and just ignore a task.
-Not that if you await manually a task, this cancels bubbling automatically:
-if you take the pain of waiting for a task, it's not to get all the rest cancelled!
+Not that if you await manually a task, or add a done callback, this cancels
+bubbling automatically: if you take the pain of waiting for a task,
+it's not to get all the rest cancelled!
 
 ```python
 import asyncio
@@ -203,12 +205,40 @@ async def fetch_url():
 
 async def main():
 
-    async with Scope(timeout=0.2):
-        async with Scope(timeout=0.5) as inner:
+    async with Scope(timeout=0.2) as parent:
+        async with parent.fork(timeout=0.5) as inner:
             # This will try to run for 10 seconds
             inner << fetch_url()
         
     # Here the outer Scope will timeout first and will cancel the inner one!
+```
+
+### Running synchronous code with executors
+
+It is possible to run synchronous code from a scope using the
+`loop.run_in_executor` method; this would return a coroutine which
+you can spawn as usual. But beware of using that method! The same way
+interrupts handling is a mess in asyncio, using thread from asyncio is tricky.
+Most OS don't support cancelling running threads, so does Python.
+As such, once your executor code is running, the scope has no way to
+actually stop it; if you cancel the scope, the corresponding future will be
+cancelled but the task will continue running if not yet finished, resulting in
+various "fun" situations if that task has side effects...
+
+So: yes, you can use this, but at your own risks!
+
+```python
+import asyncio
+import time
+from traio import Scope
+
+def fetch_url():
+    # Do something long, sync!
+    time.sleep(10)
+
+async def main():
+    async with Scope(timeout=0.2) as scope:
+        scope << asyncio.get_event_loop().run_in_executor(None, fetch_url)
 ```
 
 ### Getting current Scope

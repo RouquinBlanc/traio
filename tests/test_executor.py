@@ -66,5 +66,6 @@ async def test_executor_timeout():
     assert started is True
     assert done is False
 
+    # The task is still running though...
     await asyncio.sleep(0.3)
     assert done is True
