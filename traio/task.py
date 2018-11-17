@@ -70,6 +70,7 @@ class TaskWrapper(NamedFuture):
         self.bubble = False
         return super().__await__()
 
+    # pylint: disable=arguments-differ
     def add_done_callback(self, *args, **kwargs):
         """
         When adding a done callback, mark as no bubble as well,
