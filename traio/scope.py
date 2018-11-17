@@ -359,9 +359,10 @@ class Scope(NamedFuture):
         token = SCOPE.set(self)
         task = TaskWrapper(
             fut, cancel_timeout=cancel_timeout,
-            bubble=bubble, master=master, awaited=awaited, name=name)
+            master=master, awaited=awaited, name=name)
         SCOPE.reset(token)
         task.add_done_callback(self._on_task_done)
+        task.bubble = bubble
         self.logger.debug('adding %s to %s', task, self)
         self._pending_tasks.append(task)
         return task

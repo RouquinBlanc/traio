@@ -86,6 +86,21 @@ async def test_join_task_raises():
 
 
 @pytest.mark.asyncio
+async def test_join_task_raises_wait_for():
+    """Test joining a task, but raises"""
+    before = time.time()
+
+    async with Scope(timeout=1) as n:
+        t = n.spawn(raiser())
+        with pytest.raises(ValueError):
+            # Catching the error here prevents bubbling
+            await asyncio.wait_for(t, 10)
+
+    after = time.time()
+    assert (after - before) < 0.3
+
+
+@pytest.mark.asyncio
 async def test_join_task_raises_no_env():
     """Test joining a task, but raises"""
     before = time.time()

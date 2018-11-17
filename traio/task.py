@@ -64,10 +64,19 @@ class TaskWrapper(NamedFuture):
 
     def __await__(self):
         """
-        Awaiting explicitly a task (never done internally),
+        Awaiting explicitly a task (never done internally);
+        mark as no bubble: the awaiter is responsible for raising
         """
         self.bubble = False
         return super().__await__()
+
+    def add_done_callback(self, *args, **kwargs):
+        """
+        When adding a done callback, mark as no bubble as well,
+        the callback is responsible for raising
+        """
+        self.bubble = False
+        return super().add_done_callback(*args, **kwargs)
 
     def cancel(self):
         """Perform cancellation on internal future"""
