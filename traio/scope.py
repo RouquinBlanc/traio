@@ -218,12 +218,12 @@ class Scope(NamedFuture):
             for task in self._pending_tasks if not task.done()
         ], return_exceptions=True)
 
+        if self._timeout_task:
+            await self._join_task(self._timeout_task)
+
         if any(isinstance(res, CancelError) for res in results):
             raise OSError(
                 'Could not cancel {}!!! Check your code!'.format(self))
-
-        if self._timeout_task:
-            await self._join_task(self._timeout_task)
 
     @staticmethod
     def _set_current(scope: Optional['Scope']):
