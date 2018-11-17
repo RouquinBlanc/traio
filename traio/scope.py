@@ -171,7 +171,6 @@ class Scope(NamedFuture):
         Cancel a task and wait for it to finish for `timeout` seconds.
         If it fails to terminate, raise an OSError; otherwise, swallow.
         """
-        task.cancel()
         try:
             # Since python 3.7, after timeout the wait_for API
             # will try to cancel and await the future... which may block forever!
@@ -290,18 +289,17 @@ class Scope(NamedFuture):
 
         :param exception: Exception to be raised
         """
-        if self._timeout_task:
-            self._timeout_task.cancel()
-
-        for task in self._pending_tasks:
-            if not task.done():
-                self.logger.debug(
-                    'cancelling active %s from %s', task, self)
-                task.cancel()
-
         # We only effectively cancel once
         if not self._done:
             self._done = exception if exception else True
+
+            if self._timeout_task:
+                self._timeout_task.cancel()
+
+            for task in self._pending_tasks:
+                if not task.done():
+                    self.logger.debug('cancelling active %s from %s', task, self)
+                    task.cancel()
 
             canceller = asyncio.ensure_future(self._join())  # type: asyncio.Future
             canceller.add_done_callback(self._resolve)
