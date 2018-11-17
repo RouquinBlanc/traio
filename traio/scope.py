@@ -30,6 +30,10 @@ def current_task(loop=None):
     return asyncio.Task.current_task(loop)
 
 
+class CancelError(Exception):
+    """It was impossible to cancel a task properly"""
+
+
 class Scope(NamedFuture):
     """
     Trio-like nursery (or at least a very light & dumb implementation...)
@@ -166,7 +170,7 @@ class Scope(NamedFuture):
             # No more awaited tasks scheduled: cancel the scope
             self.cancel()
 
-    async def _cancel_proper(self, task, timeout=1):
+    async def _join_task(self, task, timeout=1):
         """
         Cancel a task and wait for it to finish for `timeout` seconds.
         If it fails to terminate, raise an OSError; otherwise, swallow.
@@ -180,12 +184,11 @@ class Scope(NamedFuture):
             pass
         except asyncio.TimeoutError as ex:
             self.logger.error('%s could not be cancelled in time', self)
-            raise OSError(
-                'Could not cancel {}!!! Check your code!'.format(self)) from ex
+            raise CancelError from ex
         except Exception as ex:  # pylint: disable=broad-except
             # Too late for raising... and we need to move on cleaning other tasks!
             self.logger.warning(
-                '%s failed to cancel with exception: %s %s',
+                '%s got an exception after cancellation: %s %s',
                 task, ex.__class__.__name__, ex)
 
     def _resolve(self, _):
@@ -210,12 +213,17 @@ class Scope(NamedFuture):
         function will call this automatically.
         """
         # We may still have pending tasks if the Scope is cancelled
-        for task in self._pending_tasks:
-            if not task.done():
-                await self._cancel_proper(task, timeout=task.cancel_timeout)
+        results = await asyncio.gather(*[
+            self._join_task(task, timeout=task.cancel_timeout)
+            for task in self._pending_tasks if not task.done()
+        ], return_exceptions=True)
+
+        if any(isinstance(res, CancelError) for res in results):
+            raise OSError(
+                'Could not cancel {}!!! Check your code!'.format(self))
 
         if self._timeout_task:
-            await self._cancel_proper(self._timeout_task)
+            await self._join_task(self._timeout_task)
 
     @staticmethod
     def _set_current(scope: Optional['Scope']):

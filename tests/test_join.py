@@ -205,6 +205,34 @@ async def test_join_cleanup():
 
 
 @pytest.mark.asyncio
+async def test_join_cleanup_fast():
+    """
+    Ensure that when the scope is done,
+    all tasks have been cleaned properly.
+    """
+    done = 0
+
+    async def job():
+        nonlocal done
+        try:
+            await asyncio.sleep(10)
+        finally:
+            await asyncio.sleep(0.2)
+            done += 1
+
+    before = time.time()
+    async with Scope() as s:
+        for _ in range(10):
+            s << job()
+        await asyncio.sleep(0.1)
+        s.cancel()
+
+    after = time.time()
+    # assert 0.1 < (after - before) < 0.3
+    assert done == 10
+
+
+@pytest.mark.asyncio
 async def test_join_cleanup_external():
     """
     Ensure that when the scope is done,
