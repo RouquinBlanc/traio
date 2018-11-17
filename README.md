@@ -27,6 +27,9 @@ cancellation, scopes, and coroutines. This is *just* on top of asyncio, this
 is not an alternative! But on the good side, you can mix this with regular
 asyncio code, which can look appealing.
 
+In future versions of asyncio, many of what we do here should hopefully become
+unnecessary. In the mean time, there is no harm experimenting ;-)
+
 ## Examples
 
 ### Simple Scope
@@ -281,6 +284,8 @@ This is beta. We are not going to change the API (much) anymore.
 - play more with the real Trio and get a better feeling of it
 - get some user feedback if possible!
 
-## Similar projects
+## Inspiration
 
-You may like as well [Ayo](https://github.com/Tygs/ayo), discovered in parallel of writting this lib!
+- The [Trio presentation](https://pyvideo.org/pycon-us-2018/trio-async-concurrency-for-mere-mortals.html) at PyCon Cleveland 2018 and more generally the [Trio github](https://github.com/python-trio/trio). Trio is currently driving the innovation on async.
+- Recent [PyCon video](https://pyvideo.org/pybay-2018/asyncio-whats-next-yury-selivanov-pybay2018.html) from Yuri Selivanov about the status of asyncio and future development. Many promisses around getting a scope concept (the "supervisor"), task names, and event turning the holy `CancelledError` into a BaseException, which we are looking forward to!
+- Interresting ideas in [Ayo](https://github.com/Tygs/ayo)
